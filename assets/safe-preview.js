@@ -3,6 +3,7 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const progressPrefix = "masics_safe_preview:";
+  const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
   let records = null;
   let lastPreviewKey = "";
   let previewTimer = 0;
@@ -25,6 +26,10 @@
     });
   }
 
+  function isImageRecord(record) {
+    return imageExts.includes(String(record.extension || "").toLowerCase());
+  }
+
   async function dropboxDownload(locator) {
     const response = await fetch(DROPBOX_CONTENT + "files/download", {
       method: "POST",
@@ -36,7 +41,7 @@
     if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign in again.");
     if (response.status === 403) throw new Error("Dropbox permission denied for this file.");
     if (response.status === 409) throw new Error(`Dropbox file is missing or moved: ${locator}`);
-    if (!response.ok) throw new Error(`Dropbox download failed: ${response.status}`);
+    if (!response.ok) throw new Error(`Dropbox preview failed: ${response.status}`);
     return response;
   }
 
@@ -57,7 +62,7 @@
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("Browser could not prepare the in-page preview."));
+      reader.onerror = () => reject(new Error("Browser could not prepare the in-page image preview."));
       reader.readAsDataURL(blob);
     });
   }
@@ -97,10 +102,11 @@
     return position && title ? `${position}|${title}` : "";
   }
 
-  function renderUnsupported(record) {
+  function showNoDownloadMessage(record) {
+    const preview = $("preview");
     const message = document.createElement("p");
-    message.textContent = `Preview is unavailable for ${record.filename}. No file was downloaded.`;
-    $("preview").appendChild(message);
+    message.textContent = `${record.filename} is not auto-previewed in this safe image-only build. No file was downloaded.`;
+    preview.appendChild(message);
   }
 
   async function previewActiveRecord(options = {}) {
@@ -115,58 +121,30 @@
     previewInFlight = true;
     lastPreviewKey = key;
     preview.innerHTML = "";
-    status.textContent = options.force ? "Loading in-page preview from Dropbox..." : "Auto-loading in-page preview from Dropbox...";
 
     try {
       const allRecords = await loadManifest();
       const record = activeRecordFrom(allRecords);
       if (!record) throw new Error("No active record is selected.");
+
+      if (!isImageRecord(record)) {
+        showNoDownloadMessage(record);
+        status.textContent = "Safe auto-preview is image-only right now. No file was downloaded.";
+        return;
+      }
+
+      status.textContent = options.force ? "Loading in-page image preview from Dropbox..." : "Auto-loading in-page image preview from Dropbox...";
       const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
       const response = await downloadFirst(locators);
       const blob = await response.blob();
-      const ext = String(record.extension || "").toLowerCase();
-
-      if (blob.type.startsWith("image/") || [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"].includes(ext)) {
-        const img = document.createElement("img");
-        img.alt = record.filename;
-        preview.appendChild(img);
-        img.src = await blobToDataUrl(blob);
-        status.textContent = "Image preview loaded in-page. No file was downloaded.";
-        return;
-      }
-
-      if (blob.type === "application/pdf" || ext === ".pdf") {
-        const frame = document.createElement("iframe");
-        frame.title = record.filename;
-        frame.src = URL.createObjectURL(blob);
-        preview.appendChild(frame);
-        status.textContent = "PDF preview loaded in-page. No file was downloaded.";
-        return;
-      }
-
-      if (blob.type.startsWith("audio/")) {
-        const audio = document.createElement("audio");
-        audio.controls = true;
-        audio.src = URL.createObjectURL(blob);
-        preview.appendChild(audio);
-        status.textContent = "Audio preview loaded in-page. No file was downloaded.";
-        return;
-      }
-
-      if (blob.type.startsWith("video/")) {
-        const video = document.createElement("video");
-        video.controls = true;
-        video.src = URL.createObjectURL(blob);
-        preview.appendChild(video);
-        status.textContent = "Video preview loaded in-page. No file was downloaded.";
-        return;
-      }
-
-      renderUnsupported(record);
-      status.textContent = "Preview unavailable for this file type. No file was downloaded.";
+      const img = document.createElement("img");
+      img.alt = record.filename;
+      preview.appendChild(img);
+      img.src = await blobToDataUrl(blob);
+      status.textContent = "Image preview loaded in-page. No file was downloaded.";
     } catch (err) {
       lastPreviewKey = "";
-      status.textContent = err.message || "Unable to load evidence preview.";
+      status.textContent = err.message || "Unable to load image preview.";
     } finally {
       previewInFlight = false;
     }
