@@ -2,7 +2,6 @@
   "use strict";
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
-  const progressPrefix = "masics_safe_preview:";
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
   let records = null;
   let lastPreviewKey = "";
@@ -71,17 +70,9 @@
     if (records) return records;
     const cfg = window.MASICS_DROPBOX_CONFIG;
     if (!cfg) throw new Error("Viewer configuration is not loaded.");
-    const cached = window.sessionStorage.getItem(progressPrefix + cfg.queueIdentity);
-    if (cached) {
-      try {
-        records = JSON.parse(cached);
-        if (Array.isArray(records) && records.length) return records;
-      } catch {}
-    }
     const response = await downloadFirst([cfg.manifestDropboxPath, cfg.manifestDropboxPathAlternates || []]);
     const manifest = await response.json();
     records = manifest.records || [];
-    window.sessionStorage.setItem(progressPrefix + cfg.queueIdentity, JSON.stringify(records));
     return records;
   }
 
@@ -105,6 +96,7 @@
   function showNoDownloadMessage(record) {
     const preview = $("preview");
     const message = document.createElement("p");
+    message.className = "preview-message";
     message.textContent = `${record.filename} is not auto-previewed in this safe image-only build. No file was downloaded.`;
     preview.appendChild(message);
   }
