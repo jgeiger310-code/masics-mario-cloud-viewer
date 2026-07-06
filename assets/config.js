@@ -5,8 +5,9 @@ window.MASICS_DROPBOX_CONFIG = Object.freeze({
   manifestDropboxPathAlternates: [
     "/jake Geiger/MARIO - OPEN THIS - MASICS REVIEW TOOL/MASICS Review System Files/MASICS_MARIO_CLOUD_VIEWER/MASICS_MARIO_QUEUE_MANIFEST_V1.json"
   ],
+  progressDropboxFolder: "/jake Geiger/MARIO - OPEN THIS - MASICS REVIEW TOOL/MASICS Review System Files/MASICS_MARIO_CLOUD_VIEWER",
   queueIdentity: "masics_mario_task026_rc53_636_v1",
   queueVersion: "MASICS_MARIO_QUEUE_MANIFEST_V1",
   expectedRecordCount: 636,
-  scopes: ["files.metadata.read", "files.content.read"]
+  scopes: ["files.metadata.read", "files.content.read", "files.content.write"]
 });
