@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>MASICS Mario Review Viewer</title>
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>MASICS Mario Review Viewer</h1>
+      <p id="status-line">Sign in with Dropbox to load the protected review queue.</p>
+    </div>
+    <div class="auth-actions">
+      <button id="sign-in" class="primary">Sign in with Dropbox</button>
+      <button id="sign-out" hidden>Sign out</button>
+    </div>
+  </header>
+  <main class="layout">
+    <section class="queue-panel">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Search loaded queue" autocomplete="off">
+        <select id="filter">
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="reviewed">Reviewed</option>
+        </select>
+      </div>
+      <ol id="queue-list" class="queue-list"></ol>
+    </section>
+    <section class="review-panel">
+      <div id="empty-state" class="empty-state">The queue is protected until Dropbox sign-in completes.</div>
+      <article id="record-view" hidden>
+        <div id="progress-warning" class="progress-warning">Progress is stored in this browser. Export progress after each review session. <span id="last-export">No progress export recorded yet.</span></div>
+        <div class="record-header">
+          <div>
+            <p id="record-position" class="muted"></p>
+            <h2 id="record-title"></h2>
+          </div>
+          <button id="load-evidence">Load Evidence</button>
+        </div>
+        <dl id="record-meta" class="record-meta"></dl>
+        <div class="decision-grid">
+          <label>Decision
+            <select id="decision">
+              <option value="">Pending</option>
+              <option value="responsive">Responsive</option>
+              <option value="nonresponsive">Non-responsive</option>
+              <option value="privileged">Privileged / withhold</option>
+              <option value="needs_review">Needs further review</option>
+            </select>
+          </label>
+          <label>Notes
+            <textarea id="notes" rows="4"></textarea>
+          </label>
+        </div>
+        <div class="progress-actions">
+          <button id="export-progress">Export Progress</button>
+          <label class="import-label">Import Progress<input id="import-progress" type="file" accept="application/json"></label>
+          <button id="reset-progress">Reset Progress</button>
+        </div>
+        <div id="evidence-status" class="muted"></div>
+        <div id="preview" class="preview"></div>
+      </article>
+    </section>
+  </main>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
