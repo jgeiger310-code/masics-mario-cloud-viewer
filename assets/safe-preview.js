@@ -4,6 +4,9 @@
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const progressPrefix = "masics_safe_preview:";
   let records = null;
+  let lastPreviewKey = "";
+  let previewTimer = 0;
+  let previewInFlight = false;
 
   function $(id) {
     return document.getElementById(id);
@@ -88,23 +91,31 @@
     return records.find((record) => record.filename === title);
   }
 
+  function selectedKey() {
+    const position = ($("record-position")?.textContent || "").trim();
+    const title = ($("record-title")?.textContent || "").trim();
+    return position && title ? `${position}|${title}` : "";
+  }
+
   function renderUnsupported(record) {
     const message = document.createElement("p");
     message.textContent = `Preview is unavailable for ${record.filename}. No file was downloaded.`;
     $("preview").appendChild(message);
   }
 
-  async function safePreview(event) {
-    const button = event.target && event.target.closest && event.target.closest("#load-evidence");
-    if (!button) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-
+  async function previewActiveRecord(options = {}) {
     const status = $("evidence-status");
     const preview = $("preview");
-    if (!status || !preview) return;
+    const view = $("record-view");
+    const key = selectedKey();
+    if (!status || !preview || !view || view.hidden || !key || !token()) return;
+    if (!options.force && key === lastPreviewKey) return;
+    if (previewInFlight) return;
+
+    previewInFlight = true;
+    lastPreviewKey = key;
     preview.innerHTML = "";
-    status.textContent = "Loading in-page preview from Dropbox...";
+    status.textContent = options.force ? "Loading in-page preview from Dropbox..." : "Auto-loading in-page preview from Dropbox...";
 
     try {
       const allRecords = await loadManifest();
@@ -154,9 +165,33 @@
       renderUnsupported(record);
       status.textContent = "Preview unavailable for this file type. No file was downloaded.";
     } catch (err) {
+      lastPreviewKey = "";
       status.textContent = err.message || "Unable to load evidence preview.";
+    } finally {
+      previewInFlight = false;
     }
   }
 
-  document.addEventListener("click", safePreview, true);
+  function schedulePreview() {
+    window.clearTimeout(previewTimer);
+    previewTimer = window.setTimeout(() => previewActiveRecord(), 300);
+  }
+
+  document.addEventListener("click", (event) => {
+    const button = event.target && event.target.closest && event.target.closest("#load-evidence");
+    if (button) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      lastPreviewKey = "";
+      previewActiveRecord({ force: true });
+      return;
+    }
+    window.setTimeout(schedulePreview, 50);
+  }, true);
+
+  document.addEventListener("change", () => window.setTimeout(schedulePreview, 50), true);
+
+  const observer = new MutationObserver(() => schedulePreview());
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  schedulePreview();
 })();
