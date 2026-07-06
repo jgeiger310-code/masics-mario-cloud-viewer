@@ -161,6 +161,21 @@
     releasePreview();
   }
 
+  function uniqueLocators(values) {
+    const seen = new Set();
+    return values.flat().filter((value) => {
+      const locator = String(value || "").trim();
+      if (!locator || seen.has(locator)) return false;
+      seen.add(locator);
+      return true;
+    });
+  }
+
+  function isLookupError(err) {
+    const message = String(err && err.message || "");
+    return /missing|moved|not_found|malformed_path|lookup/i.test(message);
+  }
+
   async function dropboxRpc(endpoint, body) {
     const response = await fetch(DROPBOX_RPC + endpoint, {
       method: "POST",
@@ -172,6 +187,12 @@
     });
     if (response.status === 401) throw new Error("Dropbox authentication expired. Sign in again.");
     if (response.status === 403) throw new Error("Dropbox permission denied for this file.");
+    if (response.status === 409) {
+      let detail = "";
+      try { detail = await response.text(); } catch {}
+      const suffix = detail ? ` (${detail.slice(0, 240)})` : "";
+      throw new Error(`Dropbox lookup failed${suffix}`);
+    }
     if (!response.ok) throw new Error(`Dropbox request failed: ${response.status}`);
     return response.json();
   }
@@ -186,13 +207,45 @@
     });
     if (response.status === 401) throw new Error("Dropbox authentication expired. Sign in again.");
     if (response.status === 403) throw new Error("Dropbox permission denied for this file.");
-    if (response.status === 409) throw new Error("Dropbox file is missing or moved.");
+    if (response.status === 409) {
+      let detail = "";
+      try { detail = await response.text(); } catch {}
+      const suffix = detail ? ` (${detail.slice(0, 240)})` : "";
+      throw new Error(`Dropbox file is missing or moved: ${pathOrId}${suffix}`);
+    }
     if (!response.ok) throw new Error(`Dropbox download failed: ${response.status}`);
     return response;
   }
 
+  async function downloadFirst(locators) {
+    let lastError = null;
+    for (const locator of uniqueLocators(locators)) {
+      try {
+        return await dropboxDownload(locator);
+      } catch (err) {
+        lastError = err;
+        if (!isLookupError(err)) throw err;
+      }
+    }
+    throw lastError || new Error("No Dropbox locator is available.");
+  }
+
+  async function metadataFirst(locators) {
+    let lastError = null;
+    for (const locator of uniqueLocators(locators)) {
+      try {
+        await dropboxRpc("files/get_metadata", { path: locator, include_media_info: false, include_deleted: false });
+        return locator;
+      } catch (err) {
+        lastError = err;
+        if (!isLookupError(err)) throw err;
+      }
+    }
+    throw lastError || new Error("No Dropbox locator is available.");
+  }
+
   async function loadManifest() {
-    const response = await dropboxDownload(cfg.manifestDropboxPath);
+    const response = await downloadFirst([cfg.manifestDropboxPath, cfg.manifestDropboxPathAlternates || []]);
     const loaded = await response.json();
     validateManifest(loaded);
     manifest = loaded;
@@ -289,8 +342,8 @@
     releasePreview();
     els.evidenceStatus.textContent = "Checking Dropbox metadata...";
     try {
-      const locator = active.dropbox_file_id || active.dropbox_path;
-      await dropboxRpc("files/get_metadata", { path: locator, include_media_info: false, include_deleted: false });
+      const locators = uniqueLocators([active.dropbox_file_id, active.dropbox_path, active.dropbox_path_alternates || []]);
+      const locator = await metadataFirst(locators);
       els.evidenceStatus.textContent = "Loading evidence preview...";
       const response = await dropboxDownload(locator);
       const blob = await response.blob();
