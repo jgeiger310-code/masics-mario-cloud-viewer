@@ -35,7 +35,8 @@
     exportProgress: $("export-progress"),
     importProgress: $("import-progress"),
     resetProgress: $("reset-progress"),
-    lastExport: $("last-export")
+    lastExport: $("last-export"),
+    saveStatus: $("save-status")
   };
 
   function setStatus(message) {
@@ -51,13 +52,37 @@
   }
 
   function exportStampKey() {
-    return progressPrefix + cfg.queueIdentity + ':last_export_at';
+    return progressPrefix + cfg.queueIdentity + ":last_export_at";
+  }
+
+  function saveStampKey() {
+    return progressPrefix + cfg.queueIdentity + ":last_save_at";
+  }
+
+  function formatLocalTime(value) {
+    if (!value) return "";
+    try {
+      return new Date(value).toLocaleString();
+    } catch {
+      return value;
+    }
+  }
+
+  function updateSaveStatus(message) {
+    if (!els.saveStatus) return;
+    const savedAt = window.localStorage.getItem(saveStampKey());
+    els.saveStatus.textContent = message || (savedAt ? `Autosaved locally: ${formatLocalTime(savedAt)}` : "Autosave ready");
+  }
+
+  function markSaved(savedAt = new Date().toISOString()) {
+    window.localStorage.setItem(saveStampKey(), savedAt);
+    updateSaveStatus(`Autosaved locally: ${formatLocalTime(savedAt)}`);
   }
 
   function updateExportStatus() {
     if (!els.lastExport) return;
     const value = window.localStorage.getItem(exportStampKey());
-    els.lastExport.textContent = value ? `Most recent export: ${new Date(value).toLocaleString()}` : 'No progress export recorded yet.';
+    els.lastExport.textContent = value ? `Most recent export: ${new Date(value).toLocaleString()}` : "No progress export recorded yet.";
   }
 
   function loadProgress() {
@@ -80,9 +105,22 @@
 
   function setProgressFor(id, patch) {
     const progress = loadProgress();
-    progress.decisions[id] = { ...(progress.decisions[id] || {}), ...patch, updatedAt: new Date().toISOString() };
+    const savedAt = new Date().toISOString();
+    progress.decisions[id] = { ...(progress.decisions[id] || {}), ...patch, updatedAt: savedAt };
     saveProgress(progress);
+    markSaved(savedAt);
     renderList();
+  }
+
+  async function requestPersistentStorage() {
+    if (!navigator.storage || !navigator.storage.persist) return;
+    try {
+      const alreadyPersisted = await navigator.storage.persisted();
+      const persisted = alreadyPersisted || await navigator.storage.persist();
+      window.localStorage.setItem(progressPrefix + cfg.queueIdentity + ":persistent_storage", persisted ? "granted" : "best_effort");
+    } catch {
+      window.localStorage.setItem(progressPrefix + cfg.queueIdentity + ":persistent_storage", "unavailable");
+    }
   }
 
   function randomBase64Url(bytes = 32) {
@@ -251,6 +289,7 @@
     manifest = loaded;
     records = loaded.records;
     setStatus(`Loaded ${records.length} protected queue records. Pending: ${loaded.pending_count}. Reviewed: ${loaded.reviewed_count}.`);
+    updateSaveStatus();
     renderList();
   }
 
@@ -329,6 +368,7 @@
     els.preview.innerHTML = "";
     renderList();
     updateExportStatus();
+    updateSaveStatus(saved.updatedAt ? `Autosaved locally: ${formatLocalTime(saved.updatedAt)}` : undefined);
   }
 
   function releasePreview() {
@@ -391,7 +431,7 @@
     }
   }
 
-  function downloadProgress(prefix = 'masics-progress') {
+  function downloadProgress(prefix = "masics-progress") {
     const progress = loadProgress();
     const exportedAt = new Date().toISOString();
     progress.exportedAt = exportedAt;
@@ -399,7 +439,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${prefix}-${cfg.queueIdentity}-${exportedAt.replace(/[:.]/g, '-')}.json`;
+    a.download = `${prefix}-${cfg.queueIdentity}-${exportedAt.replace(/[:.]/g, "-")}.json`;
     a.click();
     URL.revokeObjectURL(url);
     window.localStorage.setItem(exportStampKey(), exportedAt);
@@ -407,7 +447,7 @@
   }
 
   function exportProgress() {
-    downloadProgress('masics-progress');
+    downloadProgress("masics-progress");
   }
 
   async function importProgress(file) {
@@ -427,6 +467,7 @@
       if (typeof value !== "object" || /<script|javascript:/i.test(JSON.stringify(value))) throw new Error("Progress import contains unsafe values.");
     }
     saveProgress(imported);
+    markSaved(imported.exportedAt || new Date().toISOString());
     if (active) showRecord(active);
     setStatus("Progress import completed.");
   }
@@ -466,6 +507,8 @@
     els.resetProgress.addEventListener("click", () => {
       if (confirm("Reset progress stored in this browser for this queue?")) {
         window.localStorage.removeItem(progressKey());
+        window.localStorage.removeItem(saveStampKey());
+        updateSaveStatus("Autosave reset");
         if (active) showRecord(active);
       }
     });
@@ -474,6 +517,8 @@
   async function init() {
     wireEvents();
     updateExportStatus();
+    updateSaveStatus();
+    requestPersistentStorage();
     try {
       const handled = await handleCallback();
       if (token || handled) {
