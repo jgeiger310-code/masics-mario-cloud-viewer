@@ -385,11 +385,9 @@
         els.preview.appendChild(pre);
       });
     } else {
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = record.filename;
-      link.textContent = "Download unsupported file";
-      els.preview.appendChild(link);
+      const message = document.createElement("p");
+      message.textContent = "Preview is unavailable for this file type. No file was downloaded.";
+      els.preview.appendChild(message);
     }
   }
 
