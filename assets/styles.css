@@ -30,6 +30,9 @@ p { margin: 0; }
 .decision-grid label { display: grid; gap: 6px; }
 .progress-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .import-label input { display: none; }
+.tracker-summary { align-self: center; color: #586270; font-size: 13px; padding: 7px 2px; }
+#export-tagged-csv { border-color: #2f855a; color: #1f6f45; font-weight: 700; }
+#export-audit-json { border-color: #6b7280; color: #374151; }
 .preview { margin-top: 10px; min-height: 340px; max-height: calc(100vh - 290px); background: #fff; border: 1px solid #d7dbe0; border-radius: 8px; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 10px; }
 .preview img { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 330px); object-fit: contain; background: #fff; }
 .preview iframe, .preview video { display: block; width: 100%; min-height: 520px; border: 0; object-fit: contain; background: #fff; }
