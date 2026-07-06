@@ -1,0 +1,225 @@
+(() => {
+  "use strict";
+
+  const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
+  const version = "20260706-1";
+
+  function cfg() {
+    return window.MASICS_DROPBOX_CONFIG || {};
+  }
+
+  function token() {
+    return window.sessionStorage.getItem("masics_access_token") || "";
+  }
+
+  function progressKey() {
+    return `masics_cloud_progress:${cfg().queueIdentity}`;
+  }
+
+  function stampKey(name) {
+    return `${progressKey()}:${name}`;
+  }
+
+  function saveStatus() {
+    return document.getElementById("save-status");
+  }
+
+  function setSaveStatus(message) {
+    const el = saveStatus();
+    if (el) el.textContent = message;
+  }
+
+  function setTopStatus(message) {
+    const el = document.getElementById("status-line");
+    if (el) el.textContent = message;
+  }
+
+  function progressFolder() {
+    return String(cfg().progressDropboxFolder || "").replace(/\/+$/g, "");
+  }
+
+  function loadLocalProgress() {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(progressKey()) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveLocalProgress(progress) {
+    window.localStorage.setItem(progressKey(), JSON.stringify(progress));
+  }
+
+  function updatedAt(value) {
+    const time = Date.parse(value || "");
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  function mergeDecisions(onlineDecisions, localDecisions) {
+    const merged = { ...(onlineDecisions || {}) };
+    Object.entries(localDecisions || {}).forEach(([reviewId, local]) => {
+      const current = merged[reviewId] || {};
+      if (updatedAt(local.updatedAt) >= updatedAt(current.updatedAt)) merged[reviewId] = local;
+    });
+    return merged;
+  }
+
+  function unique(values) {
+    const seen = new Set();
+    return values.flat().map((value) => String(value || "").trim()).filter((value) => {
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+  }
+
+  async function dropboxDownload(locator) {
+    const response = await fetch(DROPBOX_CONTENT + "files/download", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token()}`,
+        "Dropbox-API-Arg": JSON.stringify({ path: locator })
+      }
+    });
+    if (response.status === 409 || response.status === 404) return null;
+    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign out, sign in again, then press Save Online.");
+    if (response.status === 403) throw new Error("Dropbox permission denied while reading online tracker.");
+    if (!response.ok) throw new Error(`Dropbox read failed: ${response.status}`);
+    return response;
+  }
+
+  async function dropboxUpload(path, text, mode = "overwrite") {
+    const response = await fetch(DROPBOX_CONTENT + "files/upload", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token()}`,
+        "Content-Type": "application/octet-stream",
+        "Dropbox-API-Arg": JSON.stringify({
+          path,
+          mode: { ".tag": mode },
+          autorename: false,
+          mute: true,
+          strict_conflict: false
+        })
+      },
+      body: text
+    });
+    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign out, sign in again, then press Save Online.");
+    if (response.status === 403) throw new Error("Dropbox did not allow online save. The app and shared folder need review-progress write permission.");
+    if (response.status === 409) throw new Error("Dropbox could not write the online tracker file. Check that Mario has edit access to the shared review folder.");
+    if (!response.ok) throw new Error(`Dropbox write failed: ${response.status}`);
+    return response.json();
+  }
+
+  async function loadManifestRecords() {
+    const config = cfg();
+    for (const locator of unique([config.manifestDropboxPath, config.manifestDropboxPathAlternates || []])) {
+      const response = await dropboxDownload(locator);
+      if (!response) continue;
+      const manifest = await response.json();
+      return Array.isArray(manifest.records) ? manifest.records : [];
+    }
+    return [];
+  }
+
+  async function loadOnlineProgress(base) {
+    const response = await dropboxDownload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`);
+    if (!response) return null;
+    try {
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+
+  function csvEscape(value) {
+    const text = String(value ?? "");
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }
+
+  function buildRows(records, decisions) {
+    return records.map((record) => {
+      const saved = decisions[record.review_id] || {};
+      const decision = saved.decision || "";
+      const notes = saved.notes || "";
+      return {
+        queue_number: record.queue_number,
+        filename: record.filename,
+        review_id: record.review_id,
+        file_type: record.file_type || record.extension || "",
+        decision,
+        notes,
+        updated_at: saved.updatedAt || "",
+        reviewed: Boolean(decision || notes),
+        dropbox_path: record.dropbox_path || ""
+      };
+    });
+  }
+
+  function buildCsv(rows) {
+    const header = ["queue_number", "filename", "review_id", "file_type", "decision", "notes", "updated_at", "reviewed", "dropbox_path"];
+    const lines = [header, ...rows.map((row) => header.map((field) => row[field]))];
+    return lines.map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n";
+  }
+
+  async function saveOnlineMerged(event) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    const button = document.getElementById("save-online");
+    const base = progressFolder();
+    if (!token()) throw new Error("Sign in with Dropbox before saving online.");
+    if (!base) throw new Error("Online progress folder is not configured.");
+
+    if (button) button.disabled = true;
+    setSaveStatus("Saving online tracker...");
+
+    try {
+      const [records, online] = await Promise.all([loadManifestRecords(), loadOnlineProgress(base)]);
+      const localProgress = loadLocalProgress();
+      const mergedDecisions = mergeDecisions(online?.decisions || {}, localProgress.decisions || {});
+      const exportedAt = new Date().toISOString();
+      const rows = buildRows(records, mergedDecisions);
+      const reviewed = rows.filter((row) => row.reviewed).length;
+      const payload = {
+        schema: "MASICS_MARIO_ONLINE_REVIEW_PROGRESS_V1",
+        queueIdentity: cfg().queueIdentity,
+        queueVersion: cfg().queueVersion,
+        trackerVersion: version,
+        exportedAt,
+        source: "github-pages-cloud-viewer",
+        mergePolicy: "newest updatedAt per review_id",
+        reviewer: "Mario",
+        userAgent: navigator.userAgent,
+        url: location.href,
+        total: records.length || cfg().expectedRecordCount || 636,
+        reviewed,
+        pending: Math.max(0, (records.length || cfg().expectedRecordCount || 636) - reviewed),
+        decisions: mergedDecisions,
+        tagged: rows.filter((row) => row.reviewed)
+      };
+      const jsonText = JSON.stringify(payload, null, 2);
+      const csvText = buildCsv(rows);
+      const stamp = exportedAt.replace(/[:.]/g, "-");
+
+      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, jsonText, "overwrite");
+      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, csvText, "overwrite");
+      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, jsonText, "add");
+
+      saveLocalProgress({ queueIdentity: cfg().queueIdentity, decisions: mergedDecisions, exportedAt });
+      window.localStorage.setItem(stampKey("last_online_sync_at"), exportedAt);
+      setSaveStatus(`Saved online tracker: ${reviewed} reviewed, ${payload.pending} pending.`);
+      setTopStatus(`Saved online tracker. Reviewed: ${reviewed}. Pending: ${payload.pending}.`);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.id !== "save-online") return;
+    saveOnlineMerged(event).catch((err) => setSaveStatus(err.message || "Online tracker save failed."));
+  }, true);
+})();
