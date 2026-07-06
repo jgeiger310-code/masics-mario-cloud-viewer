@@ -2,7 +2,7 @@
   "use strict";
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
-  const trackerVersion = "20260706-1";
+  const trackerVersion = "20260706-2";
   let manifestRecords = null;
   let lastSeen = new Map();
   let timer = 0;
@@ -100,6 +100,10 @@
     return progress.decisions || {};
   }
 
+  function blankState() {
+    return JSON.stringify({ decision: "", notes: "", updatedAt: "" });
+  }
+
   function recordById(records, id) {
     return records.find((record) => record.review_id === id) || {};
   }
@@ -120,11 +124,7 @@
 
     Object.entries(decisions).forEach(([reviewId, decision]) => {
       const next = stateFor(decision);
-      const prev = lastSeen.get(reviewId);
-      if (prev === undefined) {
-        lastSeen.set(reviewId, next);
-        return;
-      }
+      const prev = lastSeen.has(reviewId) ? lastSeen.get(reviewId) : blankState();
       if (prev !== next) {
         const record = recordById(records, reviewId);
         audit.push({
