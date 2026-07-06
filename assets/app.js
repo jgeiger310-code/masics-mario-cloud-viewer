@@ -32,6 +32,7 @@
     load: $("load-evidence"),
     evidenceStatus: $("evidence-status"),
     preview: $("preview"),
+    saveOnline: $("save-online"),
     exportProgress: $("export-progress"),
     importProgress: $("import-progress"),
     resetProgress: $("reset-progress"),
@@ -59,6 +60,10 @@
     return progressPrefix + cfg.queueIdentity + ":last_save_at";
   }
 
+  function onlineSyncStampKey() {
+    return progressPrefix + cfg.queueIdentity + ":last_online_sync_at";
+  }
+
   function formatLocalTime(value) {
     if (!value) return "";
     try {
@@ -70,13 +75,25 @@
 
   function updateSaveStatus(message) {
     if (!els.saveStatus) return;
+    if (message) {
+      els.saveStatus.textContent = message;
+      return;
+    }
+    const onlineAt = window.localStorage.getItem(onlineSyncStampKey());
     const savedAt = window.localStorage.getItem(saveStampKey());
-    els.saveStatus.textContent = message || (savedAt ? `Autosaved locally: ${formatLocalTime(savedAt)}` : "Autosave ready");
+    if (onlineAt) els.saveStatus.textContent = `Saved online: ${formatLocalTime(onlineAt)}`;
+    else if (savedAt) els.saveStatus.textContent = `Autosaved locally: ${formatLocalTime(savedAt)}`;
+    else els.saveStatus.textContent = "Autosave ready";
   }
 
   function markSaved(savedAt = new Date().toISOString()) {
     window.localStorage.setItem(saveStampKey(), savedAt);
     updateSaveStatus(`Autosaved locally: ${formatLocalTime(savedAt)}`);
+  }
+
+  function markSyncedOnline(savedAt = new Date().toISOString()) {
+    window.localStorage.setItem(onlineSyncStampKey(), savedAt);
+    updateSaveStatus(`Saved online: ${formatLocalTime(savedAt)}`);
   }
 
   function updateExportStatus() {
@@ -255,6 +272,33 @@
     return response;
   }
 
+  async function dropboxUpload(path, text, mode = "overwrite") {
+    const response = await fetch(DROPBOX_CONTENT + "files/upload", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/octet-stream",
+        "Dropbox-API-Arg": JSON.stringify({
+          path,
+          mode: { ".tag": mode },
+          autorename: false,
+          mute: true,
+          strict_conflict: false
+        })
+      },
+      body: text
+    });
+    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign out, sign in again, then press Save Online.");
+    if (response.status === 403) throw new Error("Dropbox did not allow online save. The app/folder needs write permission for review progress.");
+    if (response.status === 409) {
+      let detail = "";
+      try { detail = await response.text(); } catch {}
+      throw new Error(`Dropbox could not save the tracker file. Check that Mario has edit access to the shared review folder. ${detail.slice(0, 220)}`);
+    }
+    if (!response.ok) throw new Error(`Dropbox online save failed: ${response.status}`);
+    return response.json();
+  }
+
   async function downloadFirst(locators) {
     let lastError = null;
     for (const locator of uniqueLocators(locators)) {
@@ -431,6 +475,71 @@
     }
   }
 
+  function taggedRows(progress) {
+    const decisions = progress.decisions || {};
+    return records.map((record) => {
+      const saved = decisions[record.review_id] || {};
+      if (!(saved.decision || saved.notes)) return null;
+      return {
+        queue_number: record.queue_number,
+        filename: record.filename,
+        review_id: record.review_id,
+        file_type: record.file_type || record.extension || "",
+        decision: saved.decision || "",
+        notes: saved.notes || "",
+        updated_at: saved.updatedAt || "",
+        dropbox_path: record.dropbox_path || ""
+      };
+    }).filter(Boolean);
+  }
+
+  function buildOnlinePayload() {
+    const progress = loadProgress();
+    const exportedAt = new Date().toISOString();
+    const tagged = taggedRows(progress);
+    return {
+      schema: "MASICS_MARIO_ONLINE_REVIEW_PROGRESS_V1",
+      queueIdentity: cfg.queueIdentity,
+      queueVersion: cfg.queueVersion,
+      exportedAt,
+      source: "github-pages-cloud-viewer",
+      reviewer: "Mario",
+      userAgent: navigator.userAgent,
+      url: location.href,
+      total: records.length,
+      reviewed: tagged.length,
+      pending: Math.max(0, records.length - tagged.length),
+      decisions: progress.decisions || {},
+      tagged
+    };
+  }
+
+  function progressDropboxBase() {
+    return String(cfg.progressDropboxFolder || "").replace(/\/+$/g, "");
+  }
+
+  async function saveOnline() {
+    if (!token) throw new Error("Sign in with Dropbox before saving online.");
+    if (!records.length) throw new Error("The queue is not loaded yet.");
+    const base = progressDropboxBase();
+    if (!base) throw new Error("Online progress folder is not configured.");
+    const payload = buildOnlinePayload();
+    const text = JSON.stringify(payload, null, 2);
+    const stamp = payload.exportedAt.replace(/[:.]/g, "-");
+    const latestPath = `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`;
+    const snapshotPath = `${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`;
+    els.saveOnline.disabled = true;
+    updateSaveStatus("Saving online...");
+    try {
+      await dropboxUpload(latestPath, text, "overwrite");
+      await dropboxUpload(snapshotPath, text, "add");
+      markSyncedOnline(payload.exportedAt);
+      setStatus(`Saved online. Reviewed: ${payload.reviewed}. Pending: ${payload.pending}.`);
+    } finally {
+      els.saveOnline.disabled = false;
+    }
+  }
+
   function downloadProgress(prefix = "masics-progress") {
     const progress = loadProgress();
     const exportedAt = new Date().toISOString();
@@ -493,6 +602,7 @@
     els.load.addEventListener("click", loadEvidence);
     els.decision.addEventListener("change", () => active && setProgressFor(active.review_id, { decision: els.decision.value, notes: els.notes.value }));
     els.notes.addEventListener("input", () => active && setProgressFor(active.review_id, { decision: els.decision.value, notes: els.notes.value }));
+    els.saveOnline.addEventListener("click", () => saveOnline().catch((err) => updateSaveStatus(err.message || "Online save failed.")));
     els.exportProgress.addEventListener("click", exportProgress);
     els.importProgress.addEventListener("change", async () => {
       if (!els.importProgress.files.length) return;
@@ -508,6 +618,7 @@
       if (confirm("Reset progress stored in this browser for this queue?")) {
         window.localStorage.removeItem(progressKey());
         window.localStorage.removeItem(saveStampKey());
+        window.localStorage.removeItem(onlineSyncStampKey());
         updateSaveStatus("Autosave reset");
         if (active) showRecord(active);
       }
