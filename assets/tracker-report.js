@@ -6,10 +6,13 @@
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const cfg = window.MASICS_DROPBOX_CONFIG || {};
   const authStore = window.sessionStorage;
+  const autoRefreshMs = 30000;
   let latestProgress = null;
   let latestAudit = null;
   let manifestRecords = [];
   let backupEntries = [];
+  let refreshTimer = 0;
+  let loadInFlight = false;
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -220,20 +223,35 @@
 
   async function loadData() {
     if (!token()) return;
+    if (loadInFlight) return;
+    loadInFlight = true;
     signedInUi(true);
-    setStatus("Loading online tracker files from Dropbox...");
-    const base = await resolveProgressFolder();
-    const manifest = await loadOptionalJson("queue manifest", [cfg.manifestDropboxPath, cfg.manifestDropboxPathAlternates || []]);
-    const progress = await loadOptionalJson("latest progress", [cfg.progressDropboxLatestJsonId, `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`]);
-    const audit = await loadOptionalJson("latest audit", [`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`]);
-    setStatus("Loading backup snapshot list from Dropbox...");
-    const entries = await listFolder(cfg.progressDropboxFolderId || base).catch(() => listFolder(base));
-    manifestRecords = Array.isArray(manifest?.records) ? manifest.records : [];
-    latestProgress = progress || {};
-    latestAudit = audit || {};
-    backupEntries = entries.filter((entry) => /^MASICS_MARIO_REVIEW_(PROGRESS|AUDIT)_.+\.(json|csv)$/i.test(entry.name || ""));
-    render();
-    setStatus(`Loaded tracker. Last save: ${formatTime(latestProgress.exportedAt)}.`);
+    try {
+      setStatus("Loading online tracker files from Dropbox...");
+      const base = await resolveProgressFolder();
+      const manifest = await loadOptionalJson("queue manifest", [cfg.manifestDropboxPath, cfg.manifestDropboxPathAlternates || []]);
+      const progress = await loadOptionalJson("latest progress", [cfg.progressDropboxLatestJsonId, `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`]);
+      const audit = await loadOptionalJson("latest audit", [`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`]);
+      setStatus("Loading backup snapshot list from Dropbox...");
+      const entries = await listFolder(cfg.progressDropboxFolderId || base).catch(() => listFolder(base));
+      manifestRecords = Array.isArray(manifest?.records) ? manifest.records : [];
+      latestProgress = progress || {};
+      latestAudit = audit || {};
+      backupEntries = entries.filter((entry) => /^MASICS_MARIO_REVIEW_(PROGRESS|AUDIT)_.+\.(json|csv)$/i.test(entry.name || ""));
+      render();
+      setStatus(`Loaded tracker. Last save: ${formatTime(latestProgress.exportedAt)}. Auto-refresh is on.`);
+    } finally {
+      loadInFlight = false;
+    }
+  }
+
+  function scheduleAutoRefresh() {
+    window.clearInterval(refreshTimer);
+    if (!token()) return;
+    refreshTimer = window.setInterval(() => {
+      if (document.hidden) return;
+      loadData().catch((err) => setStatus(err.message || "Tracker refresh failed."));
+    }, autoRefreshMs);
   }
 
   function recordMap() {
@@ -385,6 +403,7 @@
     els.signIn.addEventListener("click", () => signIn().catch((err) => setStatus(err.message || "Dropbox sign-in failed.")));
     els.signOut.addEventListener("click", () => {
       authStore.removeItem("masics_access_token");
+      window.clearInterval(refreshTimer);
       signedInUi(false);
       setStatus("Signed out. Sign in with Dropbox to review saved progress.");
     });
@@ -393,6 +412,12 @@
     els.decision.addEventListener("change", render);
     els.exportReviewed.addEventListener("click", exportReviewedCsv);
     els.exportAudit.addEventListener("click", exportAuditJson);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && token()) loadData().catch((err) => setStatus(err.message || "Tracker refresh failed."));
+    });
+    window.addEventListener("focus", () => {
+      if (token()) loadData().catch((err) => setStatus(err.message || "Tracker refresh failed."));
+    });
   }
 
   async function init() {
@@ -401,6 +426,7 @@
     if (!token()) return;
     try {
       await loadData();
+      scheduleAutoRefresh();
     } catch (err) {
       setStatus(err.message || "Tracker load failed.");
     }

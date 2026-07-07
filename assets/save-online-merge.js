@@ -3,7 +3,10 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const version = "20260707-5";
+  const version = "20260707-6";
+  let autoSaveTimer = 0;
+  let autoSaveInFlight = false;
+  let autoSaveQueued = false;
 
   function cfg() {
     return window.MASICS_DROPBOX_CONFIG || {};
@@ -332,14 +335,17 @@
   async function saveOnlineMerged(event) {
     event.preventDefault();
     event.stopImmediatePropagation();
+    await saveOnlineMergedNow("manual");
+  }
 
+  async function saveOnlineMergedNow(reason = "manual") {
     const button = document.getElementById("save-online");
     const base = await resolvedProgressFolder();
     if (!token()) throw new Error("Sign in with Dropbox before saving online.");
     if (!base) throw new Error("Online progress folder is not configured.");
 
     if (button) button.disabled = true;
-    setSaveStatus("Saving online tracker...");
+    setSaveStatus(reason === "auto" ? "Auto-saving online tracker..." : "Saving online tracker...");
 
     try {
       const [records, online] = await Promise.all([loadManifestRecords(), loadOnlineProgress(base)]);
@@ -389,10 +395,50 @@
     }
   }
 
+  function scheduleAutoSave() {
+    if (!token()) return;
+    window.clearTimeout(autoSaveTimer);
+    setSaveStatus("Saved locally. Auto-save online pending...");
+    autoSaveTimer = window.setTimeout(() => {
+      runAutoSave().catch((err) => {
+        setSaveStatus(`Auto-save online failed: ${err.message || err}. Press Save Online.`);
+      });
+    }, 1400);
+  }
+
+  async function runAutoSave() {
+    if (!token()) return;
+    if (autoSaveInFlight) {
+      autoSaveQueued = true;
+      return;
+    }
+    autoSaveInFlight = true;
+    try {
+      do {
+        autoSaveQueued = false;
+        await saveOnlineMergedNow("auto");
+      } while (autoSaveQueued);
+    } finally {
+      autoSaveInFlight = false;
+    }
+  }
+
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (target.id !== "save-online") return;
     saveOnlineMerged(event).catch((err) => setSaveStatus(err.message || "Online tracker save failed."));
+  }, true);
+
+  document.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.id === "decision") scheduleAutoSave();
+  }, true);
+
+  document.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.id === "notes") scheduleAutoSave();
   }, true);
 })();
