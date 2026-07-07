@@ -185,7 +185,7 @@
 
   function normalizeDecision(value) {
     const decision = String(value?.decision || "");
-    const allowedDecisions = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review"]);
+    const allowedDecisions = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "duplicate", "delete"]);
     return {
       decision: allowedDecisions.has(decision) ? decision : "",
       notes: String(value?.notes || ""),
@@ -230,10 +230,11 @@
     if (!online) return { reviewed: 0, imported: false };
     const local = loadProgress();
     const decisions = filterKnownDecisions(mergeDecisions(online.decisions, local.decisions));
-    const reviewed = Object.values(decisions).filter((saved) => saved && saved.decision).length;
+    const reviewed = Object.values(decisions).filter((saved) => saved && saved.decision && saved.decision !== "delete").length;
+    const excluded = Object.values(decisions).filter((saved) => saved && saved.decision === "delete").length;
     saveProgress({ queueIdentity: cfg.queueIdentity, decisions, exportedAt: online.exportedAt || new Date().toISOString() });
     if (online.exportedAt) markSyncedOnline(online.exportedAt);
-    return { reviewed, imported: true };
+    return { reviewed, excluded, imported: true };
   }
 
   function progressFor(id) {
@@ -243,15 +244,23 @@
 
   function isReviewed(record) {
     const saved = progressFor(record.review_id);
-    return Boolean(saved.decision);
+    return Boolean(saved.decision && saved.decision !== "delete");
+  }
+
+  function isExcluded(record) {
+    const saved = progressFor(record.review_id);
+    return saved.decision === "delete";
   }
 
   function reviewCounts() {
-    const reviewed = records.filter(isReviewed).length;
+    const active = records.filter((record) => !isExcluded(record));
+    const reviewed = active.filter(isReviewed).length;
+    const excluded = records.length - active.length;
     return {
-      total: records.length,
+      total: active.length,
       reviewed,
-      pending: Math.max(0, records.length - reviewed),
+      pending: Math.max(0, active.length - reviewed),
+      excluded,
       visible: filteredRecords().length
     };
   }
@@ -264,13 +273,13 @@
   function updateQueueSummary() {
     if (!els.counts) return;
     const counts = reviewCounts();
-    els.counts.textContent = `${counts.visible} shown | ${counts.reviewed} reviewed | ${counts.pending} pending`;
+    els.counts.textContent = `${counts.visible} shown | ${counts.reviewed} reviewed | ${counts.pending} pending | ${counts.excluded} excluded`;
   }
 
   function updateReviewNavigation() {
     const index = activeIndex();
     const hasRecords = records.length > 0 && index >= 0;
-    const pendingCount = records.filter((record) => !isReviewed(record)).length;
+    const pendingCount = records.filter((record) => !isExcluded(record) && !isReviewed(record)).length;
     if (els.previousRecord) els.previousRecord.disabled = !hasRecords || index <= 0;
     if (els.nextRecord) els.nextRecord.disabled = !hasRecords || index >= records.length - 1;
     if (els.nextPending) els.nextPending.disabled = pendingCount === 0;
@@ -294,7 +303,7 @@
     const start = activeIndex();
     for (let offset = 1; offset <= records.length; offset += 1) {
       const index = (Math.max(start, -1) + offset) % records.length;
-      if (!isReviewed(records[index])) {
+      if (!isExcluded(records[index]) && !isReviewed(records[index])) {
         showRecord(records[index]);
         return;
       }
@@ -517,13 +526,14 @@
     manifest = loaded;
     records = loaded.records;
     const onlineSync = await syncOnlineProgressIntoBrowser();
+    const excluded = onlineSync.imported ? onlineSync.excluded || 0 : 0;
     const reviewed = onlineSync.imported ? onlineSync.reviewed : loaded.reviewed_count;
-    const pending = Math.max(0, records.length - reviewed);
+    const pending = Math.max(0, records.length - excluded - reviewed);
     const source = onlineSync.imported ? " Synced online progress." : "";
-    setStatus(`Loaded ${records.length} protected queue records. Pending: ${pending}. Reviewed: ${reviewed}.${source}`);
+    setStatus(`Loaded ${records.length} protected queue records. Pending: ${pending}. Reviewed: ${reviewed}. Excluded: ${excluded}.${source}`);
     renderList();
     if (records.length) showRecord(records[0]);
-    setStatus(`Loaded ${records.length} protected queue records. Pending: ${pending}. Reviewed: ${reviewed}.${source}`);
+    setStatus(`Loaded ${records.length} protected queue records. Pending: ${pending}. Reviewed: ${reviewed}. Excluded: ${excluded}.${source}`);
     updateSaveStatus();
   }
 
@@ -552,9 +562,11 @@
     const progress = loadProgress();
     return records.filter((record) => {
       const saved = progress.decisions[record.review_id] || {};
+      if (saved.decision === "delete") return false;
       const reviewed = Boolean(saved.decision);
       if (els.filter.value === "pending" && reviewed) return false;
       if (els.filter.value === "reviewed" && !reviewed) return false;
+      if (els.filter.value === "duplicate" && saved.decision !== "duplicate") return false;
       if (!q) return true;
       return [record.filename, record.review_id, record.display?.mfr_request_ids].some((v) => String(v || "").toLowerCase().includes(q));
     });
@@ -686,7 +698,7 @@
     const decisions = progress.decisions || {};
     return records.map((record) => {
       const saved = decisions[record.review_id] || {};
-      if (!saved.decision) return null;
+      if (!saved.decision || saved.decision === "delete") return null;
       return {
         queue_number: record.queue_number,
         filename: record.filename,

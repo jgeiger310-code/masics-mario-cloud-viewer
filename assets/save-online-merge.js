@@ -180,7 +180,7 @@
 
   function normalizeDecision(value) {
     const decision = String(value?.decision || "");
-    const allowedDecisions = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review"]);
+    const allowedDecisions = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "duplicate", "delete"]);
     return {
       decision: allowedDecisions.has(decision) ? decision : "",
       notes: String(value?.notes || ""),
@@ -315,14 +315,15 @@
         decision,
         notes,
         updated_at: saved.updatedAt || "",
-        reviewed: Boolean(decision),
+        reviewed: Boolean(decision && decision !== "delete"),
+        excluded: decision === "delete",
         dropbox_path: record.dropbox_path || ""
       };
     });
   }
 
   function buildCsv(rows) {
-    const header = ["queue_number", "filename", "review_id", "file_type", "decision", "notes", "updated_at", "reviewed", "dropbox_path"];
+    const header = ["queue_number", "filename", "review_id", "file_type", "decision", "notes", "updated_at", "reviewed", "excluded", "dropbox_path"];
     const lines = [header, ...rows.map((row) => header.map((field) => row[field]))];
     return lines.map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n";
   }
@@ -346,6 +347,7 @@
       const exportedAt = new Date().toISOString();
       const rows = buildRows(records, mergedDecisions);
       const reviewed = rows.filter((row) => row.reviewed).length;
+      const excluded = rows.filter((row) => row.excluded).length;
       const payload = {
         schema: "MASICS_MARIO_ONLINE_REVIEW_PROGRESS_V1",
         queueIdentity: cfg().queueIdentity,
@@ -359,9 +361,11 @@
         url: location.href,
         total: records.length || cfg().expectedRecordCount || 636,
         reviewed,
-        pending: Math.max(0, (records.length || cfg().expectedRecordCount || 636) - reviewed),
+        excluded,
+        pending: Math.max(0, (records.length || cfg().expectedRecordCount || 636) - reviewed - excluded),
         decisions: mergedDecisions,
-        tagged: rows.filter((row) => row.reviewed)
+        tagged: rows.filter((row) => row.reviewed),
+        excludedRows: rows.filter((row) => row.excluded)
       };
       const jsonText = JSON.stringify(payload, null, 2);
       const csvText = buildCsv(rows);
@@ -377,8 +381,8 @@
 
       saveLocalProgress({ queueIdentity: cfg().queueIdentity, decisions: mergedDecisions, exportedAt });
       window.localStorage.setItem(stampKey("last_online_sync_at"), exportedAt);
-      setSaveStatus(`Saved online tracker: ${reviewed} reviewed, ${payload.pending} pending.`);
-      setTopStatus(`Saved online tracker. Reviewed: ${reviewed}. Pending: ${payload.pending}.`);
+      setSaveStatus(`Saved online tracker: ${reviewed} reviewed, ${payload.pending} pending, ${excluded} excluded.`);
+      setTopStatus(`Saved online tracker. Reviewed: ${reviewed}. Pending: ${payload.pending}. Excluded: ${excluded}.`);
     } finally {
       if (button) button.disabled = false;
     }

@@ -26,6 +26,7 @@
       <div class="metric"><span>Total</span><strong id="metric-total">-</strong></div>
       <div class="metric"><span>Reviewed</span><strong id="metric-reviewed">-</strong></div>
       <div class="metric"><span>Pending</span><strong id="metric-pending">-</strong></div>
+      <div class="metric"><span>Excluded</span><strong id="metric-excluded">-</strong></div>
       <div class="metric"><span>Last Save</span><strong id="metric-exported">-</strong></div>
       <div class="metric"><span>Progress Backups</span><strong id="metric-progress-backups">-</strong></div>
       <div class="metric"><span>Audit Backups</span><strong id="metric-audit-backups">-</strong></div>
@@ -41,6 +42,8 @@
           <option value="missing">Missing</option>
           <option value="privileged">Privileged</option>
           <option value="needs_review">Needs review</option>
+          <option value="duplicate">Duplicate</option>
+          <option value="delete">Delete / excluded</option>
         </select>
       </div>
       <div class="tracker-actions">
@@ -52,7 +55,7 @@
     <section class="tracker-grid">
       <article class="tracker-panel">
         <div class="panel-header">
-          <h2>Reviewed Files</h2>
+          <h2>Decision / Excluded Files</h2>
           <span id="reviewed-count" class="muted">0 shown</span>
         </div>
         <div class="table-wrap">
@@ -67,7 +70,7 @@
               </tr>
             </thead>
             <tbody id="reviewed-body">
-              <tr><td colspan="5">Sign in to load reviewed files.</td></tr>
+              <tr><td colspan="5">Sign in to load decision and excluded files.</td></tr>
             </tbody>
           </table>
         </div>
@@ -118,6 +121,6 @@
     </section>
   </main>
   <script src="assets/config.js?v=20260707-3"></script>
-  <script src="assets/tracker-report.js?v=20260707-4"></script>
+  <script src="assets/tracker-report.js?v=20260707-5"></script>
 </body>
 </html>

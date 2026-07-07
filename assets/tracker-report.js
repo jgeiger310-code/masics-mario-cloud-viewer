@@ -22,6 +22,7 @@
     total: $("metric-total"),
     reviewed: $("metric-reviewed"),
     pending: $("metric-pending"),
+    excluded: $("metric-excluded"),
     exported: $("metric-exported"),
     progressBackups: $("metric-progress-backups"),
     auditBackups: $("metric-audit-backups"),
@@ -270,13 +271,15 @@
 
   function renderMetrics(rows) {
     const total = latestProgress.total || manifestRecords.length || cfg.expectedRecordCount || "-";
-    const reviewed = rows.length || 0;
-    const pending = Math.max(0, Number(total || 0) - reviewed);
+    const excluded = rows.filter((row) => row.decision === "delete").length;
+    const reviewed = rows.filter((row) => row.decision && row.decision !== "delete").length;
+    const pending = Math.max(0, Number(total || 0) - reviewed - excluded);
     const progressBackups = backupEntries.filter((entry) => /^MASICS_MARIO_REVIEW_PROGRESS_/i.test(entry.name || "")).length;
     const auditBackups = backupEntries.filter((entry) => /^MASICS_MARIO_REVIEW_AUDIT_/i.test(entry.name || "")).length;
     els.total.textContent = total;
     els.reviewed.textContent = reviewed;
     els.pending.textContent = pending;
+    els.excluded.textContent = excluded;
     els.exported.textContent = formatTime(latestProgress.exportedAt);
     els.progressBackups.textContent = progressBackups;
     els.auditBackups.textContent = auditBackups;
@@ -285,7 +288,7 @@
   function renderReviewed(rows) {
     els.reviewedCount.textContent = `${rows.length} shown`;
     if (!rows.length) {
-      els.reviewedBody.innerHTML = `<tr><td colspan="5">No reviewed files match the current filter.</td></tr>`;
+      els.reviewedBody.innerHTML = `<tr><td colspan="5">No decision or excluded files match the current filter.</td></tr>`;
       return;
     }
     els.reviewedBody.innerHTML = rows.map((row) => `
