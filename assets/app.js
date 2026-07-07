@@ -129,6 +129,25 @@
     return merged;
   }
 
+  function normalizeDecision(value) {
+    const decision = String(value?.decision || "");
+    const allowedDecisions = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review"]);
+    return {
+      decision: allowedDecisions.has(decision) ? decision : "",
+      notes: String(value?.notes || ""),
+      updatedAt: String(value?.updatedAt || "")
+    };
+  }
+
+  function filterKnownDecisions(decisions) {
+    const knownIds = new Set(records.map((record) => record.review_id));
+    const filtered = {};
+    Object.entries(decisions || {}).forEach(([reviewId, value]) => {
+      if (knownIds.has(reviewId) && value && typeof value === "object") filtered[reviewId] = normalizeDecision(value);
+    });
+    return filtered;
+  }
+
   async function loadOnlineProgress() {
     const base = progressDropboxBase();
     if (!base) return null;
@@ -147,7 +166,7 @@
     const online = await loadOnlineProgress();
     if (!online) return { reviewed: 0, imported: false };
     const local = loadProgress();
-    const decisions = mergeDecisions(online.decisions, local.decisions);
+    const decisions = filterKnownDecisions(mergeDecisions(online.decisions, local.decisions));
     const reviewed = Object.values(decisions).filter((saved) => saved && (saved.decision || saved.notes)).length;
     saveProgress({ queueIdentity: cfg.queueIdentity, decisions, exportedAt: online.exportedAt || new Date().toISOString() });
     if (online.exportedAt) markSyncedOnline(online.exportedAt);

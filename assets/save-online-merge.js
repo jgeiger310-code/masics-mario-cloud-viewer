@@ -65,6 +65,25 @@
     return merged;
   }
 
+  function normalizeDecision(value) {
+    const decision = String(value?.decision || "");
+    const allowedDecisions = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review"]);
+    return {
+      decision: allowedDecisions.has(decision) ? decision : "",
+      notes: String(value?.notes || ""),
+      updatedAt: String(value?.updatedAt || "")
+    };
+  }
+
+  function filterKnownDecisions(records, decisions) {
+    const knownIds = new Set(records.map((record) => record.review_id));
+    const filtered = {};
+    Object.entries(decisions || {}).forEach(([reviewId, value]) => {
+      if (knownIds.has(reviewId) && value && typeof value === "object") filtered[reviewId] = normalizeDecision(value);
+    });
+    return filtered;
+  }
+
   function unique(values) {
     const seen = new Set();
     return values.flat().map((value) => String(value || "").trim()).filter((value) => {
@@ -178,7 +197,7 @@
     try {
       const [records, online] = await Promise.all([loadManifestRecords(), loadOnlineProgress(base)]);
       const localProgress = loadLocalProgress();
-      const mergedDecisions = mergeDecisions(online?.decisions || {}, localProgress.decisions || {});
+      const mergedDecisions = filterKnownDecisions(records, mergeDecisions(online?.decisions || {}, localProgress.decisions || {}));
       const exportedAt = new Date().toISOString();
       const rows = buildRows(records, mergedDecisions);
       const reviewed = rows.filter((row) => row.reviewed).length;
