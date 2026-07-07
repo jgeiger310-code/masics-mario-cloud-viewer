@@ -568,7 +568,7 @@
       if (els.filter.value === "reviewed" && !reviewed) return false;
       if (els.filter.value === "duplicate" && saved.decision !== "duplicate") return false;
       if (!q) return true;
-      return [record.filename, record.review_id, record.display?.mfr_request_ids].some((v) => String(v || "").toLowerCase().includes(q));
+      return [record.filename, record.review_id, record.display?.mfr_request_ids, saved.decision, saved.notes].some((v) => String(v || "").toLowerCase().includes(q));
     });
   }
 
