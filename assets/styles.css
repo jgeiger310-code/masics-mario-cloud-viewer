@@ -66,7 +66,10 @@ p { margin: 0; }
   .record-actions { justify-content: stretch; max-width: none; }
   .record-actions button { flex: 1 1 44%; min-height: 34px; }
   .decision-grid { grid-template-columns: 1fr; }
-  .progress-actions { margin-left: -12px; margin-right: -12px; padding: 9px 12px; }
+  .progress-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-left: -12px; margin-right: -12px; padding: 8px 12px; }
+  .progress-actions button, .progress-actions .import-label { min-width: 0; padding: 6px 5px; font-size: 12px; text-align: center; display: flex; align-items: center; justify-content: center; }
+  #save-online { grid-column: 1 / -1; font-size: 14px; }
+  .save-status { grid-column: 1 / -1; padding: 2px 0; font-size: 12px; }
   .preview { max-height: none; }
   .preview img { max-height: none; }
 }
