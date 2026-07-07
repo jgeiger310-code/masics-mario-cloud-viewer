@@ -47,7 +47,7 @@ const trackerReport = read("assets/tracker-report.js");
 test("live page references current performance asset versions", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260707-4/);
-  assert.match(html, /assets\/styles\.css\?v=20260707-7/);
+  assert.match(html, /assets\/styles\.css\?v=20260707-8/);
   assert.match(html, /assets\/app\.js\?v=20260707-19/);
   assert.match(html, /assets\/safe-preview\.js\?v=20260707-19/);
   assert.match(html, /assets\/save-online-merge\.js\?v=20260707-12/);
@@ -70,6 +70,19 @@ test("tracker metrics prefer live manifest total over stale progress total", () 
 test("record changes emit exactly the preview event hook", () => {
   assert.match(app, /window\.dispatchEvent\(new CustomEvent\("masics:record-change"\)\)/);
   assert.match(preview, /window\.addEventListener\("masics:record-change", \(\) => schedulePreview\(\)\)/);
+});
+
+test("mobile review controls keep save online near next and move metadata low", () => {
+  const html = read("index.html");
+  const styles = read("assets/styles.css");
+  assert.match(html, /<button id="next-record" type="button">Next<\/button>\s+<button id="save-online"/);
+  assert.match(html, /<div class="bottom-record-actions">\s+<button id="previous-record"/);
+  assert.match(html, /<button id="next-pending" class="primary" type="button">Next Pending<\/button>\s+<button id="load-evidence"/);
+  assert.match(html, /<div id="preview" class="preview"><\/div>\s+<dl id="record-meta" class="record-meta compact-meta"><\/dl>/);
+  assert.doesNotMatch(html, /progress-warning/);
+  assert.match(html, /class="top-note"/);
+  assert.match(styles, /\.compact-meta/);
+  assert.match(styles, /\.bottom-record-actions/);
 });
 
 test("filter changes select a visible record when the active record is hidden", () => {
