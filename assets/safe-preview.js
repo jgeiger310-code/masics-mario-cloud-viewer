@@ -5,7 +5,9 @@
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
   let records = null;
   let lastPreviewKey = "";
+  let previewTimer = 0;
   let previewInFlight = false;
+  let previewQueued = false;
   let activePreviewUrl = "";
 
   function $(id) {
@@ -97,15 +99,20 @@
     preview.appendChild(message);
   }
 
-  async function previewActiveRecord() {
+  async function previewActiveRecord(options = {}) {
     const status = $("evidence-status");
     const preview = $("preview");
     const view = $("record-view");
     const key = selectedKey();
     if (!status || !preview || !view || view.hidden || !key || !token()) return;
-    if (previewInFlight) return;
+    if (!options.force && key === lastPreviewKey) return;
+    if (previewInFlight) {
+      previewQueued = true;
+      return;
+    }
 
     previewInFlight = true;
+    previewQueued = false;
     lastPreviewKey = key;
     releasePreviewUrl();
     preview.innerHTML = "";
@@ -129,6 +136,7 @@
       img.alt = record.filename;
       activePreviewUrl = URL.createObjectURL(blob);
       img.src = activePreviewUrl;
+      if (key !== selectedKey()) return;
       preview.appendChild(img);
       status.textContent = "Image preview loaded in-page. No file was downloaded.";
     } catch (err) {
@@ -136,7 +144,13 @@
       if (err.name !== "AbortError") status.textContent = err.message || "Unable to load image preview.";
     } finally {
       previewInFlight = false;
+      if (previewQueued) schedulePreview({ force: true });
     }
+  }
+
+  function schedulePreview(options = {}) {
+    window.clearTimeout(previewTimer);
+    previewTimer = window.setTimeout(() => previewActiveRecord(options), options.force ? 0 : 300);
   }
 
   document.addEventListener("click", (event) => {
@@ -145,10 +159,11 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       lastPreviewKey = "";
-      previewActiveRecord();
+      previewActiveRecord({ force: true });
       return;
     }
   }, true);
 
+  window.addEventListener("masics:record-change", () => schedulePreview());
   window.addEventListener("pagehide", releasePreviewUrl);
 })();
