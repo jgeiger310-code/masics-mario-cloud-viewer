@@ -242,24 +242,29 @@
     return progress.decisions[id] || { decision: "", notes: "", updatedAt: "" };
   }
 
-  function isReviewed(record) {
-    const saved = progressFor(record.review_id);
+  function isReviewed(record, progress = null) {
+    const saved = progress ? (progress.decisions[record.review_id] || {}) : progressFor(record.review_id);
     return Boolean(saved.decision && saved.decision !== "delete");
   }
 
-  function isExcluded(record) {
-    const saved = progressFor(record.review_id);
+  function isExcluded(record, progress = null) {
+    const saved = progress ? (progress.decisions[record.review_id] || {}) : progressFor(record.review_id);
     return saved.decision === "delete";
   }
 
   function reviewCounts() {
-    const active = records.filter((record) => !isExcluded(record));
-    const reviewed = active.filter(isReviewed).length;
-    const excluded = records.length - active.length;
+    const progress = loadProgress();
+    let reviewed = 0;
+    let excluded = 0;
+    records.forEach((record) => {
+      if (isExcluded(record, progress)) excluded += 1;
+      else if (isReviewed(record, progress)) reviewed += 1;
+    });
+    const total = Math.max(0, records.length - excluded);
     return {
-      total: active.length,
+      total,
       reviewed,
-      pending: Math.max(0, active.length - reviewed),
+      pending: Math.max(0, total - reviewed),
       excluded,
       visible: filteredRecords().length
     };
@@ -279,7 +284,8 @@
   function updateReviewNavigation() {
     const index = activeIndex();
     const hasRecords = records.length > 0 && index >= 0;
-    const pendingCount = records.filter((record) => !isExcluded(record) && !isReviewed(record)).length;
+    const progress = loadProgress();
+    const pendingCount = records.filter((record) => !isExcluded(record, progress) && !isReviewed(record, progress)).length;
     if (els.previousRecord) els.previousRecord.disabled = !hasRecords || index <= 0;
     if (els.nextRecord) els.nextRecord.disabled = !hasRecords || index >= records.length - 1;
     if (els.nextPending) els.nextPending.disabled = pendingCount === 0;
@@ -291,6 +297,29 @@
     if (!active || !els.list) return;
     const button = els.list.querySelector(`button[data-review-id="${cssEscape(active.review_id)}"]`);
     if (button) button.scrollIntoView({ block: "nearest" });
+  }
+
+  function updateListButton(record, progress = null) {
+    if (!record || !els.list) return;
+    const button = els.list.querySelector(`button[data-review-id="${cssEscape(record.review_id)}"]`);
+    if (!button) return;
+    const reviewed = isReviewed(record, progress);
+    button.className = `${active && active.review_id === record.review_id ? "active " : ""}${reviewed ? "reviewed" : "pending"}`.trim();
+    const state = button.querySelector(".queue-state");
+    if (state) state.textContent = reviewed ? "Done" : "Open";
+  }
+
+  function refreshListState(previousReviewId = "") {
+    const progress = loadProgress();
+    els.list.querySelectorAll("button.active").forEach((button) => button.classList.remove("active"));
+    if (previousReviewId) {
+      const previous = records.find((record) => record.review_id === previousReviewId);
+      updateListButton(previous, progress);
+    }
+    updateListButton(active, progress);
+    updateQueueSummary();
+    updateReviewNavigation();
+    scrollActiveIntoView();
   }
 
   function selectRecordAt(index) {
@@ -317,8 +346,9 @@
     progress.decisions[id] = { ...(progress.decisions[id] || {}), ...patch, updatedAt: savedAt };
     saveProgress(progress);
     markSaved(savedAt);
-    renderList();
-    updateReviewNavigation();
+    const needsFullListRefresh = els.search.value.trim() || els.filter.value !== "all" || patch.decision === "delete";
+    if (needsFullListRefresh) renderList();
+    else refreshListState();
   }
 
   async function requestPersistentStorage() {
@@ -574,8 +604,9 @@
 
   function renderList() {
     els.list.innerHTML = "";
+    const progress = loadProgress();
     filteredRecords().forEach((record) => {
-      const reviewed = isReviewed(record);
+      const reviewed = isReviewed(record, progress);
       const item = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
@@ -601,6 +632,7 @@
   }
 
   function showRecord(record) {
+    const previousReviewId = active?.review_id || "";
     active = record;
     releasePreview();
     els.empty.hidden = true;
@@ -626,7 +658,7 @@
     els.notes.value = saved.notes || "";
     els.evidenceStatus.textContent = "Evidence is not loaded until requested.";
     els.preview.innerHTML = "";
-    renderList();
+    refreshListState(previousReviewId);
     const panel = document.querySelector(".review-panel");
     if (panel) panel.scrollTo({ top: 0 });
     updateExportStatus();

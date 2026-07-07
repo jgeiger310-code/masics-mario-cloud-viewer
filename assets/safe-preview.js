@@ -5,8 +5,8 @@
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
   let records = null;
   let lastPreviewKey = "";
-  let previewTimer = 0;
   let previewInFlight = false;
+  let activePreviewUrl = "";
 
   function $(id) {
     return document.getElementById(id);
@@ -57,13 +57,9 @@
     throw lastError || new Error("No Dropbox locator is available for this record.");
   }
 
-  function blobToDataUrl(blob) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("Browser could not prepare the in-page image preview."));
-      reader.readAsDataURL(blob);
-    });
+  function releasePreviewUrl() {
+    if (activePreviewUrl) URL.revokeObjectURL(activePreviewUrl);
+    activePreviewUrl = "";
   }
 
   async function loadManifest() {
@@ -101,17 +97,17 @@
     preview.appendChild(message);
   }
 
-  async function previewActiveRecord(options = {}) {
+  async function previewActiveRecord() {
     const status = $("evidence-status");
     const preview = $("preview");
     const view = $("record-view");
     const key = selectedKey();
     if (!status || !preview || !view || view.hidden || !key || !token()) return;
-    if (!options.force && key === lastPreviewKey) return;
     if (previewInFlight) return;
 
     previewInFlight = true;
     lastPreviewKey = key;
+    releasePreviewUrl();
     preview.innerHTML = "";
 
     try {
@@ -125,26 +121,22 @@
         return;
       }
 
-      status.textContent = options.force ? "Loading in-page image preview from Dropbox..." : "Auto-loading in-page image preview from Dropbox...";
+      status.textContent = "Loading in-page image preview from Dropbox...";
       const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
       const response = await downloadFirst(locators);
       const blob = await response.blob();
       const img = document.createElement("img");
       img.alt = record.filename;
+      activePreviewUrl = URL.createObjectURL(blob);
+      img.src = activePreviewUrl;
       preview.appendChild(img);
-      img.src = await blobToDataUrl(blob);
       status.textContent = "Image preview loaded in-page. No file was downloaded.";
     } catch (err) {
       lastPreviewKey = "";
-      status.textContent = err.message || "Unable to load image preview.";
+      if (err.name !== "AbortError") status.textContent = err.message || "Unable to load image preview.";
     } finally {
       previewInFlight = false;
     }
-  }
-
-  function schedulePreview() {
-    window.clearTimeout(previewTimer);
-    previewTimer = window.setTimeout(() => previewActiveRecord(), 300);
   }
 
   document.addEventListener("click", (event) => {
@@ -153,15 +145,10 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       lastPreviewKey = "";
-      previewActiveRecord({ force: true });
+      previewActiveRecord();
       return;
     }
-    window.setTimeout(schedulePreview, 50);
   }, true);
 
-  document.addEventListener("change", () => window.setTimeout(schedulePreview, 50), true);
-
-  const observer = new MutationObserver(() => schedulePreview());
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-  schedulePreview();
+  window.addEventListener("pagehide", releasePreviewUrl);
 })();
