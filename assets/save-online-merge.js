@@ -35,6 +35,28 @@
     if (el) el.textContent = message;
   }
 
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  function isTransientFetchError(err) {
+    return /Failed to fetch|NetworkError|Load failed/i.test(String(err && err.message || err || ""));
+  }
+
+  async function fetchWithRetry(url, options) {
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await fetch(url, options);
+      } catch (err) {
+        lastError = err;
+        if (!isTransientFetchError(err)) throw err;
+        await delay(600 * (attempt + 1));
+      }
+    }
+    throw lastError || new Error("Dropbox request failed before it could start.");
+  }
+
   function progressFolder() {
     return String(cfg().progressDropboxFolder || "").replace(/\/+$/g, "");
   }
@@ -184,7 +206,7 @@
   }
 
   async function dropboxDownload(locator) {
-    const response = await fetch(DROPBOX_CONTENT + "files/download", {
+    const response = await fetchWithRetry(DROPBOX_CONTENT + "files/download", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token()}`,
@@ -199,7 +221,7 @@
   }
 
   async function dropboxRpc(endpoint, body) {
-    const response = await fetch(DROPBOX_RPC + endpoint, {
+    const response = await fetchWithRetry(DROPBOX_RPC + endpoint, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token()}`,
@@ -215,7 +237,7 @@
   }
 
   async function dropboxUpload(path, text, mode = "overwrite") {
-    const response = await fetch(DROPBOX_CONTENT + "files/upload", {
+    const response = await fetchWithRetry(DROPBOX_CONTENT + "files/upload", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token()}`,

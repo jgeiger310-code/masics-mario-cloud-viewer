@@ -58,6 +58,28 @@
     return message || `Dropbox ${action} failed.`;
   }
 
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  function isTransientFetchError(err) {
+    return /Failed to fetch|NetworkError|Load failed/i.test(String(err && err.message || err || ""));
+  }
+
+  async function fetchWithRetry(url, options) {
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await fetch(url, options);
+      } catch (err) {
+        lastError = err;
+        if (!isTransientFetchError(err)) throw err;
+        await delay(600 * (attempt + 1));
+      }
+    }
+    throw lastError || new Error("Dropbox request failed before it could start.");
+  }
+
   function escapeText(value) {
     return String(value || "");
   }
@@ -353,7 +375,7 @@
       redirect_uri: cfg.redirectUri,
       code_verifier: verifier
     });
-    const response = await fetch(DROPBOX_TOKEN, {
+    const response = await fetchWithRetry(DROPBOX_TOKEN, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body
@@ -393,7 +415,7 @@
   }
 
   async function dropboxRpc(endpoint, body) {
-    const response = await fetch(DROPBOX_RPC + endpoint, {
+    const response = await fetchWithRetry(DROPBOX_RPC + endpoint, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
@@ -414,7 +436,7 @@
   }
 
   async function dropboxDownload(pathOrId) {
-    const response = await fetch(DROPBOX_CONTENT + "files/download", {
+    const response = await fetchWithRetry(DROPBOX_CONTENT + "files/download", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
@@ -434,7 +456,7 @@
   }
 
   async function dropboxUpload(path, text, mode = "overwrite") {
-    const response = await fetch(DROPBOX_CONTENT + "files/upload", {
+    const response = await fetchWithRetry(DROPBOX_CONTENT + "files/upload", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
