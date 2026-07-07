@@ -48,8 +48,8 @@ test("live page references current performance asset versions", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260707-4/);
   assert.match(html, /assets\/styles\.css\?v=20260707-9/);
-  assert.match(html, /assets\/app\.js\?v=20260707-21/);
-  assert.match(html, /assets\/safe-preview\.js\?v=20260707-21/);
+  assert.match(html, /assets\/app\.js\?v=20260707-22/);
+  assert.match(html, /assets\/safe-preview\.js\?v=20260707-22/);
   assert.match(html, /assets\/save-online-merge\.js\?v=20260707-12/);
 });
 
@@ -107,6 +107,7 @@ test("manual safe preview supports media while auto preview stays image-light", 
   assert.match(preview, /files\/get_temporary_link/);
   assert.match(preview, /function renderStreamPreview/);
   assert.match(preview, /isStreamPreviewRecord\(record\)/);
+  assert.match(preview, /return audioExts\.includes\(ext\) \|\| videoExts\.includes\(ext\)/);
   assert.match(preview, /"\.pdf": "application\/pdf"/);
   assert.match(preview, /function renderPreview/);
   assert.match(preview, /document\.createElement\("audio"\)/);

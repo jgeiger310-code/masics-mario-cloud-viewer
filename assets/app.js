@@ -831,21 +831,7 @@
   function renderStreamPreview(url, record) {
     const ext = fileExtension(record);
     els.preview.innerHTML = "";
-    if (ext === ".pdf") {
-      const shell = document.createElement("div");
-      shell.className = "preview-pdf";
-      const frame = document.createElement("iframe");
-      frame.src = url;
-      frame.title = record.filename;
-      const open = document.createElement("a");
-      open.className = "preview-open";
-      open.href = url;
-      open.target = "_blank";
-      open.rel = "noopener";
-      open.textContent = "Open PDF";
-      shell.append(frame, open);
-      els.preview.appendChild(shell);
-    } else if ([".mp3", ".wav", ".m4a", ".aac", ".ogg"].includes(ext)) {
+    if ([".mp3", ".wav", ".m4a", ".aac", ".ogg"].includes(ext)) {
       const audio = document.createElement("audio");
       audio.controls = true;
       audio.preload = "metadata";
@@ -878,7 +864,7 @@
 
   function isStreamPreviewRecord(record) {
     const ext = fileExtension(record);
-    return ext === ".pdf" || [".mp3", ".wav", ".m4a", ".aac", ".ogg"].includes(ext) || [".mp4", ".mov", ".m4v", ".webm"].includes(ext);
+    return [".mp3", ".wav", ".m4a", ".aac", ".ogg"].includes(ext) || [".mp4", ".mov", ".m4v", ".webm"].includes(ext);
   }
 
   function taggedRows(progress) {

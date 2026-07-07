@@ -76,7 +76,7 @@
 
   function isStreamPreviewRecord(record) {
     const ext = fileExtension(record);
-    return pdfExts.includes(ext) || audioExts.includes(ext) || videoExts.includes(ext);
+    return audioExts.includes(ext) || videoExts.includes(ext);
   }
 
   async function dropboxDownload(locator) {
@@ -229,21 +229,7 @@
     const preview = $("preview");
     const ext = fileExtension(record);
     preview.innerHTML = "";
-    if (pdfExts.includes(ext)) {
-      const shell = document.createElement("div");
-      shell.className = "preview-pdf";
-      const frame = document.createElement("iframe");
-      frame.title = record.filename;
-      frame.src = url;
-      const open = document.createElement("a");
-      open.className = "preview-open";
-      open.href = url;
-      open.target = "_blank";
-      open.rel = "noopener";
-      open.textContent = "Open PDF";
-      shell.append(frame, open);
-      preview.appendChild(shell);
-    } else if (audioExts.includes(ext)) {
+    if (audioExts.includes(ext)) {
       const audio = document.createElement("audio");
       audio.controls = true;
       audio.preload = "metadata";
