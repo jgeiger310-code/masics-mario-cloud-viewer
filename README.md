@@ -1,0 +1,1 @@
+This repo will contain the free legal document search tool for the MASICS viewer.
