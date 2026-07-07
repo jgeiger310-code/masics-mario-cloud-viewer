@@ -3,7 +3,7 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const version = "20260707-4";
+  const version = "20260707-5";
 
   function cfg() {
     return window.MASICS_DROPBOX_CONFIG || {};
@@ -123,7 +123,7 @@
       if (hasReviewValue(onlineValue) && localValue && !shouldReplaceDecision(onlineValue, localValue) && sameSummary(mergedSummary, onlineSummary)) {
         preservedFromOnline.push({ reviewId, online: onlineSummary, local: localSummary });
       }
-      if (hasReviewValue(localValue) && shouldReplaceDecision(onlineValue || {}, localValue) && sameSummary(mergedSummary, localSummary)) {
+      if (hasReviewValue(localValue) && shouldReplaceDecision(onlineValue || {}, localValue) && sameSummary(mergedSummary, localSummary) && !sameSummary(onlineSummary, localSummary)) {
         adoptedFromLocal.push({ reviewId, online: onlineSummary, local: localSummary });
       }
       if (!sameSummary(onlineSummary, mergedSummary)) {
