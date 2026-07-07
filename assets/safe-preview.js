@@ -67,9 +67,9 @@
     return imageExts.includes(fileExtension(record));
   }
 
-  function isTemporaryLinkPreviewRecord(record) {
+  function isMediaTemporaryLinkRecord(record) {
     const ext = fileExtension(record);
-    return pdfExts.includes(ext) || audioExts.includes(ext) || videoExts.includes(ext);
+    return audioExts.includes(ext) || videoExts.includes(ext);
   }
 
   function previewBlob(blob, record) {
@@ -187,6 +187,14 @@
       img.alt = record.filename;
       img.src = url;
       preview.appendChild(img);
+    } else if (blob.type === "application/pdf" || pdfExts.includes(ext)) {
+      const shell = document.createElement("div");
+      shell.className = "preview-pdf";
+      const frame = document.createElement("iframe");
+      frame.title = record.filename;
+      frame.src = url;
+      shell.appendChild(frame);
+      preview.appendChild(shell);
     } else if (blob.type.startsWith("text/") || textExts.includes(ext)) {
       blob.text().then((text) => {
         const pre = document.createElement("pre");
@@ -205,21 +213,7 @@
     const preview = $("preview");
     const ext = fileExtension(record);
     preview.innerHTML = "";
-    if (pdfExts.includes(ext)) {
-      const shell = document.createElement("div");
-      shell.className = "preview-pdf";
-      const frame = document.createElement("iframe");
-      frame.title = record.filename;
-      frame.src = url;
-      const open = document.createElement("a");
-      open.className = "preview-open";
-      open.href = url;
-      open.target = "_blank";
-      open.rel = "noopener noreferrer";
-      open.textContent = "Open PDF";
-      shell.append(frame, open);
-      preview.appendChild(shell);
-    } else if (audioExts.includes(ext)) {
+    if (audioExts.includes(ext)) {
       const audio = document.createElement("audio");
       audio.controls = true;
       audio.preload = "metadata";
@@ -265,11 +259,11 @@
 
       status.textContent = isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : "Loading evidence preview from Dropbox...";
       const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
-      if (options.force && isTemporaryLinkPreviewRecord(record)) {
+      if (options.force && isMediaTemporaryLinkRecord(record)) {
         const link = await temporaryLinkFirst(locators);
         if (key !== selectedKey()) return;
         renderTemporaryLinkPreview(link, record);
-        status.textContent = "Evidence preview loaded from Dropbox temporary link. No file was saved to this device.";
+        status.textContent = "Media preview loaded from Dropbox temporary link. No file was saved to this device.";
         return;
       }
       const response = await downloadFirst(locators);
