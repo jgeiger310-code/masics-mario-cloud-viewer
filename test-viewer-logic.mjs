@@ -47,9 +47,9 @@ const trackerReport = read("assets/tracker-report.js");
 test("live page references current performance asset versions", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260707-4/);
-  assert.match(html, /assets\/styles\.css\?v=20260707-8/);
-  assert.match(html, /assets\/app\.js\?v=20260707-19/);
-  assert.match(html, /assets\/safe-preview\.js\?v=20260707-19/);
+  assert.match(html, /assets\/styles\.css\?v=20260707-9/);
+  assert.match(html, /assets\/app\.js\?v=20260707-20/);
+  assert.match(html, /assets\/safe-preview\.js\?v=20260707-20/);
   assert.match(html, /assets\/save-online-merge\.js\?v=20260707-12/);
 });
 
@@ -101,9 +101,14 @@ test("preview no longer uses base64 FileReader path", () => {
 test("manual safe preview supports media while auto preview stays image-light", () => {
   assert.match(preview, /const audioExts = \["\.mp3", "\.wav", "\.m4a", "\.aac", "\.ogg"\]/);
   assert.match(preview, /const videoExts = \["\.mp4", "\.mov", "\.m4v", "\.webm"\]/);
+  assert.match(preview, /const pdfExts = \["\.pdf"\]/);
+  assert.match(preview, /function previewBlob/);
+  assert.match(preview, /"\.pdf": "application\/pdf"/);
   assert.match(preview, /function renderPreview/);
   assert.match(preview, /document\.createElement\("audio"\)/);
   assert.match(preview, /document\.createElement\("video"\)/);
+  assert.match(preview, /document\.createElement\("iframe"\)/);
+  assert.match(preview, /Open PDF/);
   assert.match(preview, /if \(!options\.force && !isImageRecord\(record\)\)/);
 });
 

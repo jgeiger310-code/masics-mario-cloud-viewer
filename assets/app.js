@@ -13,6 +13,28 @@
   let records = [];
   let active = null;
   let activeObjectUrl = "";
+  const previewTypes = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".ogg": "audio/ogg",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".m4v": "video/mp4",
+    ".webm": "video/webm",
+    ".txt": "text/plain",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".md": "text/markdown"
+  };
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -710,7 +732,7 @@
       const locator = await metadataFirst(locators);
       els.evidenceStatus.textContent = "Loading evidence preview...";
       const response = await dropboxDownload(locator);
-      const blob = await response.blob();
+      const blob = previewBlob(await response.blob(), active);
       activeObjectUrl = URL.createObjectURL(blob);
       renderPreview(blob, activeObjectUrl, active);
       els.evidenceStatus.textContent = "Evidence loaded from Dropbox for this record only.";
@@ -728,10 +750,19 @@
       img.alt = record.filename;
       els.preview.appendChild(img);
     } else if (blob.type === "application/pdf" || ext === ".pdf") {
+      const shell = document.createElement("div");
+      shell.className = "preview-pdf";
       const frame = document.createElement("iframe");
       frame.src = url;
       frame.title = record.filename;
-      els.preview.appendChild(frame);
+      const open = document.createElement("a");
+      open.className = "preview-open";
+      open.href = url;
+      open.target = "_blank";
+      open.rel = "noopener";
+      open.textContent = "Open PDF";
+      shell.append(frame, open);
+      els.preview.appendChild(shell);
     } else if (blob.type.startsWith("audio/") || [".mp3", ".wav", ".m4a", ".aac", ".ogg"].includes(ext)) {
       const audio = document.createElement("audio");
       audio.controls = true;
@@ -762,6 +793,13 @@
     if (fromType && !fromType.includes("/") && !fromType.startsWith(".")) return `.${fromType}`;
     const fromName = String(record.filename || "").trim().toLowerCase().match(/\.[a-z0-9]{1,8}$/);
     return fromName ? fromName[0] : "";
+  }
+
+  function previewBlob(blob, record) {
+    const ext = fileExtension(record);
+    const type = previewTypes[ext] || blob.type || "application/octet-stream";
+    if (blob.type === type) return blob;
+    return new Blob([blob], { type });
   }
 
   function taggedRows(progress) {

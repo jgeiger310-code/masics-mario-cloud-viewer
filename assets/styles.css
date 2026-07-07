@@ -57,6 +57,9 @@ p { margin: 0; }
 .preview { margin-top: 6px; margin-bottom: 8px; min-height: 320px; max-height: min(700px, calc(100vh - 260px)); background: #fff; border: 1px solid #d7dbe0; border-radius: 6px; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 8px; }
 .preview img { display: block; width: auto; height: auto; max-width: 100%; max-height: min(660px, calc(100vh - 300px)); object-fit: contain; background: #fff; }
 .preview iframe, .preview video { display: block; width: 100%; min-height: 520px; border: 0; object-fit: contain; background: #fff; }
+.preview-pdf { width: 100%; align-self: stretch; display: grid; grid-template-rows: minmax(420px, 1fr) auto; gap: 8px; }
+.preview-pdf iframe { min-height: 560px; }
+.preview-open { justify-self: start; color: #005bd3; font-weight: 700; text-decoration: none; border: 1px solid #9bbcf3; border-radius: 6px; padding: 6px 9px; background: #f6f9ff; }
 .preview audio { width: 100%; margin: 18px; }
 .preview pre { margin: 0; padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; align-self: stretch; width: 100%; }
 .preview-message { padding: 18px; color: #586270; text-align: center; }
@@ -104,6 +107,8 @@ td { overflow-wrap: anywhere; }
   .progress-actions button, .progress-actions .import-label { min-width: 0; padding: 6px 5px; font-size: 11px; text-align: center; display: flex; align-items: center; justify-content: center; }
   .compact-meta { margin-bottom: 12px; font-size: 11px; grid-template-columns: 72px minmax(0, 1fr); }
   .preview { min-height: 300px; max-height: none; }
+  .preview-pdf { grid-template-rows: minmax(360px, 1fr) auto; }
+  .preview-pdf iframe { min-height: 420px; }
   .preview img { max-height: none; }
   .tracker-shell { padding: 10px; }
   .tracker-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
