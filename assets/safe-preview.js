@@ -54,10 +54,6 @@
     });
   }
 
-  function isImageRecord(record) {
-    return imageExts.includes(fileExtension(record));
-  }
-
   function fileExtension(record) {
     const fromExtension = String(record.extension || "").trim().toLowerCase();
     if (fromExtension) return fromExtension.startsWith(".") ? fromExtension : `.${fromExtension}`;
@@ -67,16 +63,20 @@
     return fromName ? fromName[0] : "";
   }
 
+  function isImageRecord(record) {
+    return imageExts.includes(fileExtension(record));
+  }
+
+  function isTemporaryLinkPreviewRecord(record) {
+    const ext = fileExtension(record);
+    return pdfExts.includes(ext) || audioExts.includes(ext) || videoExts.includes(ext);
+  }
+
   function previewBlob(blob, record) {
     const ext = fileExtension(record);
     const type = previewTypes[ext] || blob.type || "application/octet-stream";
     if (blob.type === type) return blob;
     return new Blob([blob], { type });
-  }
-
-  function isStreamPreviewRecord(record) {
-    const ext = fileExtension(record);
-    return audioExts.includes(ext) || videoExts.includes(ext);
   }
 
   async function dropboxDownload(locator) {
@@ -174,7 +174,7 @@
     const preview = $("preview");
     const message = document.createElement("p");
     message.className = "preview-message";
-    message.textContent = `${record.filename} is not auto-previewed in this safe image-only build. No file was downloaded.`;
+    message.textContent = `${record.filename} is not auto-previewed. Press Preview Evidence to load PDF/media safely from Dropbox.`;
     preview.appendChild(message);
   }
 
@@ -187,30 +187,6 @@
       img.alt = record.filename;
       img.src = url;
       preview.appendChild(img);
-    } else if (blob.type === "application/pdf" || pdfExts.includes(ext)) {
-      const shell = document.createElement("div");
-      shell.className = "preview-pdf";
-      const frame = document.createElement("iframe");
-      frame.title = record.filename;
-      frame.src = url;
-      const open = document.createElement("a");
-      open.className = "preview-open";
-      open.href = url;
-      open.target = "_blank";
-      open.rel = "noopener";
-      open.textContent = "Open PDF";
-      shell.append(frame, open);
-      preview.appendChild(shell);
-    } else if (blob.type.startsWith("audio/") || audioExts.includes(ext)) {
-      const audio = document.createElement("audio");
-      audio.controls = true;
-      audio.src = url;
-      preview.appendChild(audio);
-    } else if (blob.type.startsWith("video/") || videoExts.includes(ext)) {
-      const video = document.createElement("video");
-      video.controls = true;
-      video.src = url;
-      preview.appendChild(video);
     } else if (blob.type.startsWith("text/") || textExts.includes(ext)) {
       blob.text().then((text) => {
         const pre = document.createElement("pre");
@@ -225,11 +201,25 @@
     }
   }
 
-  function renderStreamPreview(url, record) {
+  function renderTemporaryLinkPreview(url, record) {
     const preview = $("preview");
     const ext = fileExtension(record);
     preview.innerHTML = "";
-    if (audioExts.includes(ext)) {
+    if (pdfExts.includes(ext)) {
+      const shell = document.createElement("div");
+      shell.className = "preview-pdf";
+      const frame = document.createElement("iframe");
+      frame.title = record.filename;
+      frame.src = url;
+      const open = document.createElement("a");
+      open.className = "preview-open";
+      open.href = url;
+      open.target = "_blank";
+      open.rel = "noopener noreferrer";
+      open.textContent = "Open PDF";
+      shell.append(frame, open);
+      preview.appendChild(shell);
+    } else if (audioExts.includes(ext)) {
       const audio = document.createElement("audio");
       audio.controls = true;
       audio.preload = "metadata";
@@ -269,17 +259,17 @@
 
       if (!options.force && !isImageRecord(record)) {
         showNoDownloadMessage(record);
-        status.textContent = "Safe auto-preview is image-only right now. No file was downloaded.";
+        status.textContent = "PDF/media preview waits for Preview Evidence. No file was downloaded.";
         return;
       }
 
       status.textContent = isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : "Loading evidence preview from Dropbox...";
       const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
-      if (options.force && isStreamPreviewRecord(record)) {
+      if (options.force && isTemporaryLinkPreviewRecord(record)) {
         const link = await temporaryLinkFirst(locators);
         if (key !== selectedKey()) return;
-        renderStreamPreview(link, record);
-        status.textContent = "Evidence preview loaded from Dropbox. No file was saved to this device.";
+        renderTemporaryLinkPreview(link, record);
+        status.textContent = "Evidence preview loaded from Dropbox temporary link. No file was saved to this device.";
         return;
       }
       const response = await downloadFirst(locators);
@@ -290,7 +280,7 @@
       status.textContent = isImageRecord(record) ? "Image preview loaded in-page. No file was downloaded." : "Evidence preview loaded in-page. No file was downloaded.";
     } catch (err) {
       lastPreviewKey = "";
-      if (err.name !== "AbortError") status.textContent = err.message || "Unable to load image preview.";
+      if (err.name !== "AbortError") status.textContent = err.message || "Unable to load evidence preview.";
     } finally {
       previewInFlight = false;
       if (previewQueued) schedulePreview({ force: true });
