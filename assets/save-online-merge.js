@@ -2,7 +2,8 @@
   "use strict";
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
-  const version = "20260706-1";
+  const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
+  const version = "20260707-3";
 
   function cfg() {
     return window.MASICS_DROPBOX_CONFIG || {};
@@ -36,6 +37,11 @@
 
   function progressFolder() {
     return String(cfg().progressDropboxFolder || "").replace(/\/+$/g, "");
+  }
+
+  function progressFolders() {
+    const folders = [cfg().progressDropboxFolder, cfg().progressDropboxFolderAlternates || []];
+    return unique(folders).map((folder) => folder.replace(/\/+$/g, ""));
   }
 
   function loadLocalProgress() {
@@ -108,6 +114,22 @@
     return response;
   }
 
+  async function dropboxRpc(endpoint, body) {
+    const response = await fetch(DROPBOX_RPC + endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token()}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body || {})
+    });
+    if (response.status === 409 || response.status === 404) return null;
+    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign out, sign in again, then press Save Online.");
+    if (response.status === 403) throw new Error("Dropbox permission denied while resolving the online tracker folder.");
+    if (!response.ok) throw new Error(`Dropbox metadata lookup failed: ${response.status}`);
+    return response.json();
+  }
+
   async function dropboxUpload(path, text, mode = "overwrite") {
     const response = await fetch(DROPBOX_CONTENT + "files/upload", {
       method: "POST",
@@ -143,13 +165,29 @@
   }
 
   async function loadOnlineProgress(base) {
-    const response = await dropboxDownload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`);
-    if (!response) return null;
-    try {
-      return await response.json();
-    } catch {
-      return null;
+    const locators = unique([
+      cfg().progressDropboxLatestJsonId,
+      base ? `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json` : "",
+      progressFolders().map((folder) => `${folder}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`)
+    ]);
+    for (const locator of locators) {
+      const response = await dropboxDownload(locator);
+      if (!response) continue;
+      try {
+        return await response.json();
+      } catch {
+        return null;
+      }
     }
+    return null;
+  }
+
+  async function resolvedProgressFolder() {
+    if (cfg().progressDropboxFolderId) {
+      const metadata = await dropboxRpc("files/get_metadata", { path: cfg().progressDropboxFolderId, include_media_info: false, include_deleted: false });
+      if (metadata && metadata.path_display) return String(metadata.path_display).replace(/\/+$/g, "");
+    }
+    return progressFolder();
   }
 
   function csvEscape(value) {
@@ -187,7 +225,7 @@
     event.stopImmediatePropagation();
 
     const button = document.getElementById("save-online");
-    const base = progressFolder();
+    const base = await resolvedProgressFolder();
     if (!token()) throw new Error("Sign in with Dropbox before saving online.");
     if (!base) throw new Error("Online progress folder is not configured.");
 

@@ -150,16 +150,25 @@
 
   async function loadOnlineProgress() {
     const base = progressDropboxBase();
-    if (!base) return null;
-    try {
-      const response = await dropboxDownload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`);
-      const online = await response.json();
-      if (!online || online.queueIdentity !== cfg.queueIdentity || typeof online.decisions !== "object") return null;
-      return online;
-    } catch (err) {
-      if (!isLookupError(err)) throw err;
-      return null;
+    const locators = uniqueLocators([
+      cfg.progressDropboxLatestJsonId,
+      base ? `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json` : "",
+      (cfg.progressDropboxFolderAlternates || []).map((folder) => `${String(folder || "").replace(/\/+$/g, "")}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`)
+    ]);
+    let lastError = null;
+    for (const locator of locators) {
+      try {
+        const response = await dropboxDownload(locator);
+        const online = await response.json();
+        if (!online || online.queueIdentity !== cfg.queueIdentity || typeof online.decisions !== "object") return null;
+        return online;
+      } catch (err) {
+        lastError = err;
+        if (!isLookupError(err)) throw err;
+      }
     }
+    if (lastError) console.warn("Online progress lookup failed", lastError);
+    return null;
   }
 
   async function syncOnlineProgressIntoBrowser() {
@@ -580,10 +589,22 @@
     return String(cfg.progressDropboxFolder || "").replace(/\/+$/g, "");
   }
 
+  async function resolvedProgressDropboxBase() {
+    if (cfg.progressDropboxFolderId) {
+      try {
+        const metadata = await dropboxRpc("files/get_metadata", { path: cfg.progressDropboxFolderId, include_media_info: false, include_deleted: false });
+        if (metadata && metadata.path_display) return String(metadata.path_display).replace(/\/+$/g, "");
+      } catch (err) {
+        if (!isLookupError(err)) throw err;
+      }
+    }
+    return progressDropboxBase();
+  }
+
   async function saveOnline() {
     if (!token) throw new Error("Sign in with Dropbox before saving online.");
     if (!records.length) throw new Error("The queue is not loaded yet.");
-    const base = progressDropboxBase();
+    const base = await resolvedProgressDropboxBase();
     if (!base) throw new Error("Online progress folder is not configured.");
     const payload = buildOnlinePayload();
     const text = JSON.stringify(payload, null, 2);
