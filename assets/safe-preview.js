@@ -67,9 +67,12 @@
     return imageExts.includes(fileExtension(record));
   }
 
-  function isMediaTemporaryLinkRecord(record) {
-    const ext = fileExtension(record);
-    return audioExts.includes(ext) || videoExts.includes(ext);
+  function isAudioRecord(record) {
+    return audioExts.includes(fileExtension(record));
+  }
+
+  function isVideoRecord(record) {
+    return videoExts.includes(fileExtension(record));
   }
 
   function previewBlob(blob, record) {
@@ -178,6 +181,19 @@
     preview.appendChild(message);
   }
 
+  function renderMediaElement(tagName, url, record) {
+    const media = document.createElement(tagName);
+    media.controls = true;
+    media.preload = "metadata";
+    media.src = url;
+    media.title = record.filename;
+    media.addEventListener("error", () => {
+      const status = $("evidence-status");
+      if (status) status.textContent = "Browser could not decode this media file, but no file was downloaded.";
+    }, { once: true });
+    return media;
+  }
+
   function renderPreview(blob, url, record) {
     const preview = $("preview");
     const ext = fileExtension(record);
@@ -195,6 +211,10 @@
       frame.src = url;
       shell.appendChild(frame);
       preview.appendChild(shell);
+    } else if (blob.type.startsWith("audio/") || isAudioRecord(record)) {
+      preview.appendChild(renderMediaElement("audio", url, record));
+    } else if (blob.type.startsWith("video/") || isVideoRecord(record)) {
+      preview.appendChild(renderMediaElement("video", url, record));
     } else if (blob.type.startsWith("text/") || textExts.includes(ext)) {
       blob.text().then((text) => {
         const pre = document.createElement("pre");
@@ -211,20 +231,11 @@
 
   function renderTemporaryLinkPreview(url, record) {
     const preview = $("preview");
-    const ext = fileExtension(record);
     preview.innerHTML = "";
-    if (audioExts.includes(ext)) {
-      const audio = document.createElement("audio");
-      audio.controls = true;
-      audio.preload = "metadata";
-      audio.src = url;
-      preview.appendChild(audio);
-    } else if (videoExts.includes(ext)) {
-      const video = document.createElement("video");
-      video.controls = true;
-      video.preload = "metadata";
-      video.src = url;
-      preview.appendChild(video);
+    if (isAudioRecord(record)) {
+      preview.appendChild(renderMediaElement("audio", url, record));
+    } else if (isVideoRecord(record)) {
+      preview.appendChild(renderMediaElement("video", url, record));
     }
   }
 
@@ -259,19 +270,18 @@
 
       status.textContent = isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : "Loading evidence preview from Dropbox...";
       const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
-      if (options.force && isMediaTemporaryLinkRecord(record)) {
-        const link = await temporaryLinkFirst(locators);
-        if (key !== selectedKey()) return;
-        renderTemporaryLinkPreview(link, record);
-        status.textContent = "Media preview loaded from Dropbox temporary link. No file was saved to this device.";
-        return;
-      }
       const response = await downloadFirst(locators);
       const blob = previewBlob(await response.blob(), record);
       activePreviewUrl = URL.createObjectURL(blob);
       if (key !== selectedKey()) return;
       renderPreview(blob, activePreviewUrl, record);
-      status.textContent = isImageRecord(record) ? "Image preview loaded in-page. No file was downloaded." : "Evidence preview loaded in-page. No file was downloaded.";
+      if (isImageRecord(record)) {
+        status.textContent = "Image preview loaded in-page. No file was downloaded.";
+      } else if (isAudioRecord(record) || isVideoRecord(record)) {
+        status.textContent = "Media preview loaded in-page. No file was downloaded.";
+      } else {
+        status.textContent = "Evidence preview loaded in-page. No file was downloaded.";
+      }
     } catch (err) {
       lastPreviewKey = "";
       if (err.name !== "AbortError") status.textContent = err.message || "Unable to load evidence preview.";
