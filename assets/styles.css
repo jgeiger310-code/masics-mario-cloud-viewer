@@ -15,13 +15,13 @@ h2 { font-size: 18px; line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
 p { margin: 0; }
 .muted { color: #586270; font-size: 14px; }
 .layout { display: grid; grid-template-columns: minmax(300px, 390px) minmax(0, 1fr); flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.queue-panel { border-right: 1px solid #d7dbe0; background: #fff; min-width: 0; display: flex; flex-direction: column; }
+.queue-panel { border-right: 1px solid #d7dbe0; background: #fff; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .toolbar { display: grid; grid-template-columns: 1fr 120px; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #e4e7ea; flex: 0 0 auto; }
 .toolbar input, .toolbar select, textarea, select { border: 1px solid #b7c0ca; border-radius: 6px; padding: 8px; background: #fff; }
 .queue-summary { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #e4e7ea; color: #586270; font-size: 13px; }
 .queue-summary span { flex: 1 1 auto; min-width: 0; }
 .queue-summary button { flex: 0 0 auto; padding: 5px 8px; font-size: 12px; }
-.queue-list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1 1 auto; min-height: 0; }
+.queue-list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1 1 0; min-height: 0; height: auto; }
 .queue-list button { width: 100%; text-align: left; border-width: 0 0 1px 0; border-color: #eef0f2; border-radius: 0; padding: 8px 12px; line-height: 1.25; display: grid; grid-template-columns: 48px minmax(0, 1fr) 58px; gap: 8px; align-items: center; min-height: 38px; }
 .queue-list button.active { background: #eaf2ff; font-weight: 700; }
 .queue-list button.reviewed { color: #586270; }
