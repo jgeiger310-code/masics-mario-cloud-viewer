@@ -571,8 +571,10 @@
     if (!loaded || loaded.schema !== cfg.queueVersion) throw new Error("Queue manifest version mismatch.");
     if (loaded.queue_identity !== cfg.queueIdentity) throw new Error("Queue manifest identity mismatch.");
     if (!Array.isArray(loaded.records)) throw new Error("Queue manifest records are malformed.");
-    if (loaded.records.length !== cfg.expectedRecordCount) throw new Error("Queue manifest record count mismatch.");
-    if (loaded.reviewed_count !== 0 || loaded.pending_count !== cfg.expectedRecordCount) throw new Error("Queue manifest contains initial decisions.");
+    const minimumRecordCount = cfg.expectedRecordCount || 1;
+    if (loaded.records.length < minimumRecordCount) throw new Error("Queue manifest record count is lower than the protected baseline.");
+    if (Number(loaded.record_count || loaded.records.length) !== loaded.records.length) throw new Error("Queue manifest record_count does not match records.");
+    if (loaded.reviewed_count !== 0 || loaded.pending_count !== loaded.records.length) throw new Error("Queue manifest contains initial decisions.");
     const ids = new Set();
     const nums = new Set();
     loaded.records.forEach((record, index) => {

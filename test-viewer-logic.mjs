@@ -45,8 +45,16 @@ const preview = read("assets/safe-preview.js");
 
 test("live page references current performance asset versions", () => {
   const html = read("index.html");
-  assert.match(html, /assets\/app\.js\?v=20260707-16/);
+  assert.match(html, /assets\/config\.js\?v=20260707-4/);
+  assert.match(html, /assets\/app\.js\?v=20260707-17/);
   assert.match(html, /assets\/safe-preview\.js\?v=20260707-18/);
+});
+
+test("manifest validation allows appended records above protected baseline", () => {
+  const fn = extractFunction(app, "validateManifest");
+  assert.match(fn, /loaded\.records\.length < minimumRecordCount/);
+  assert.doesNotMatch(fn, /loaded\.records\.length !== cfg\.expectedRecordCount/);
+  assert.match(fn, /loaded\.pending_count !== loaded\.records\.length/);
 });
 
 test("record changes emit exactly the preview event hook", () => {
