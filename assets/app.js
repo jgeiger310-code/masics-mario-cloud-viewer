@@ -166,6 +166,7 @@
   }
 
   function shouldReplaceDecision(current, candidate) {
+    if (String(current?.decision || "") && !String(candidate?.decision || "")) return false;
     const currentHasValue = hasReviewValue(current);
     const candidateHasValue = hasReviewValue(candidate);
     if (currentHasValue && !candidateHasValue) return false;
