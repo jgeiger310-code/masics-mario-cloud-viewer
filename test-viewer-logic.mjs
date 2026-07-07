@@ -42,6 +42,7 @@ function extractFunction(source, name) {
 const app = read("assets/app.js");
 const saveMerge = read("assets/save-online-merge.js");
 const preview = read("assets/safe-preview.js");
+const trackerReport = read("assets/tracker-report.js");
 
 test("live page references current performance asset versions", () => {
   const html = read("index.html");
@@ -55,6 +56,13 @@ test("manifest validation allows appended records above protected baseline", () 
   assert.match(fn, /loaded\.records\.length < minimumRecordCount/);
   assert.doesNotMatch(fn, /loaded\.records\.length !== cfg\.expectedRecordCount/);
   assert.match(fn, /loaded\.pending_count !== loaded\.records\.length/);
+});
+
+test("tracker metrics prefer live manifest total over stale progress total", () => {
+  const fn = extractFunction(trackerReport, "renderMetrics");
+  assert.match(fn, /manifestRecords\.length \|\| latestProgress\.total/);
+  const html = read("tracker.html");
+  assert.match(html, /assets\/tracker-report\.js\?v=20260707-7/);
 });
 
 test("record changes emit exactly the preview event hook", () => {

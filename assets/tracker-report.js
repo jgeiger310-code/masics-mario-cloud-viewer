@@ -288,7 +288,7 @@
   }
 
   function renderMetrics(rows) {
-    const total = latestProgress.total || manifestRecords.length || cfg.expectedRecordCount || "-";
+    const total = manifestRecords.length || latestProgress.total || cfg.expectedRecordCount || "-";
     const excluded = rows.filter((row) => row.decision === "delete").length;
     const reviewed = rows.filter((row) => row.decision && row.decision !== "delete").length;
     const pending = Math.max(0, Number(total || 0) - reviewed - excluded);
