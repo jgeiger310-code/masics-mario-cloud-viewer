@@ -840,6 +840,11 @@
     try {
       const handled = await handleCallback();
       if (token || handled) {
+        if (handled && authStore.getItem("masics_auth_return_to") === "tracker") {
+          authStore.removeItem("masics_auth_return_to");
+          window.location.replace("tracker.html");
+          return;
+        }
         els.signIn.hidden = true;
         els.signOut.hidden = false;
         setStatus("Dropbox sign-in complete. Loading protected queue manifest...");

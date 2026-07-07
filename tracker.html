@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://www.dropbox.com https://api.dropboxapi.com https://content.dropboxapi.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>MASICS Review Tracker</title>
+  <link rel="stylesheet" href="assets/styles.css?v=20260707-5">
+</head>
+<body class="tracker-page">
+  <header class="topbar">
+    <div>
+      <h1>MASICS Review Tracker</h1>
+      <p id="tracker-status">Sign in with Dropbox to review saved progress, logs, and backup snapshots.</p>
+    </div>
+    <div class="auth-actions">
+      <a class="button-link" href="./fresh.html">Viewer</a>
+      <button id="tracker-sign-in" class="primary" type="button">Sign in with Dropbox</button>
+      <button id="tracker-sign-out" type="button" hidden>Sign out</button>
+      <button id="tracker-refresh" type="button" hidden>Refresh</button>
+    </div>
+  </header>
+  <main class="tracker-shell">
+    <section class="tracker-metrics" aria-label="Review progress summary">
+      <div class="metric"><span>Total</span><strong id="metric-total">-</strong></div>
+      <div class="metric"><span>Reviewed</span><strong id="metric-reviewed">-</strong></div>
+      <div class="metric"><span>Pending</span><strong id="metric-pending">-</strong></div>
+      <div class="metric"><span>Last Save</span><strong id="metric-exported">-</strong></div>
+      <div class="metric"><span>Progress Backups</span><strong id="metric-progress-backups">-</strong></div>
+      <div class="metric"><span>Audit Backups</span><strong id="metric-audit-backups">-</strong></div>
+    </section>
+
+    <section class="tracker-tools">
+      <div class="toolbar tracker-toolbar">
+        <input id="tracker-search" type="search" placeholder="Search reviewed files, notes, decisions" autocomplete="off">
+        <select id="tracker-decision">
+          <option value="all">All decisions</option>
+          <option value="responsive">Responsive</option>
+          <option value="nonresponsive">Non-responsive</option>
+          <option value="missing">Missing</option>
+          <option value="privileged">Privileged</option>
+          <option value="needs_review">Needs review</option>
+        </select>
+      </div>
+      <div class="tracker-actions">
+        <button id="export-reviewed-csv" type="button">Export Reviewed CSV</button>
+        <button id="export-audit-json" type="button">Export Latest Audit JSON</button>
+      </div>
+    </section>
+
+    <section class="tracker-grid">
+      <article class="tracker-panel">
+        <div class="panel-header">
+          <h2>Reviewed Files</h2>
+          <span id="reviewed-count" class="muted">0 shown</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Queue</th>
+                <th>Filename</th>
+                <th>Decision</th>
+                <th>Updated</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="reviewed-body">
+              <tr><td colspan="5">Sign in to load reviewed files.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="tracker-panel">
+        <div class="panel-header">
+          <h2>Save / Audit History</h2>
+          <span id="backup-count" class="muted">0 backups</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Saved</th>
+                <th>File</th>
+                <th>Size</th>
+              </tr>
+            </thead>
+            <tbody id="backup-body">
+              <tr><td colspan="4">Sign in to load backup snapshots.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="tracker-panel">
+      <div class="panel-header">
+        <h2>Latest Save Audit</h2>
+        <span id="audit-summary" class="muted">Not loaded</span>
+      </div>
+      <div class="table-wrap audit-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Review ID</th>
+              <th>Before</th>
+              <th>After</th>
+            </tr>
+          </thead>
+          <tbody id="audit-body">
+            <tr><td colspan="3">Sign in to load latest audit.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script src="assets/config.js?v=20260707-3"></script>
+  <script src="assets/tracker-report.js?v=20260707-1"></script>
+</body>
+</html>
