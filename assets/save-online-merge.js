@@ -3,7 +3,7 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const version = "20260707-3";
+  const version = "20260707-4";
 
   function cfg() {
     return window.MASICS_DROPBOX_CONFIG || {};
@@ -62,13 +62,97 @@
     return Number.isFinite(time) ? time : 0;
   }
 
+  function hasReviewValue(value) {
+    return Boolean(value && (String(value.decision || "") || String(value.notes || "")));
+  }
+
+  function shouldReplaceDecision(current, candidate) {
+    const currentHasValue = hasReviewValue(current);
+    const candidateHasValue = hasReviewValue(candidate);
+    if (currentHasValue && !candidateHasValue) return false;
+    if (!currentHasValue && candidateHasValue) return true;
+    return updatedAt(candidate?.updatedAt) >= updatedAt(current?.updatedAt);
+  }
+
   function mergeDecisions(onlineDecisions, localDecisions) {
     const merged = { ...(onlineDecisions || {}) };
     Object.entries(localDecisions || {}).forEach(([reviewId, local]) => {
       const current = merged[reviewId] || {};
-      if (updatedAt(local.updatedAt) >= updatedAt(current.updatedAt)) merged[reviewId] = local;
+      if (shouldReplaceDecision(current, local)) merged[reviewId] = local;
     });
     return merged;
+  }
+
+  function summarizeDecision(value) {
+    return {
+      hasValue: hasReviewValue(value),
+      decision: String(value?.decision || ""),
+      hasNotes: Boolean(String(value?.notes || "")),
+      noteLength: String(value?.notes || "").length,
+      updatedAt: String(value?.updatedAt || "")
+    };
+  }
+
+  function sameSummary(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  function buildAudit(records, online, localProgress, mergedDecisions, exportedAt) {
+    const knownIds = new Set(records.map((record) => record.review_id));
+    const ids = new Set([
+      ...Object.keys(online?.decisions || {}),
+      ...Object.keys(localProgress?.decisions || {}),
+      ...Object.keys(mergedDecisions || {})
+    ]);
+    const changed = [];
+    const preservedFromOnline = [];
+    const adoptedFromLocal = [];
+    const ignoredUnknownLocalIds = [];
+
+    ids.forEach((reviewId) => {
+      const onlineValue = online?.decisions?.[reviewId];
+      const localValue = localProgress?.decisions?.[reviewId];
+      const mergedValue = mergedDecisions?.[reviewId];
+      if (!knownIds.has(reviewId)) {
+        if (localValue) ignoredUnknownLocalIds.push(reviewId);
+        return;
+      }
+      const onlineSummary = summarizeDecision(onlineValue);
+      const localSummary = summarizeDecision(localValue);
+      const mergedSummary = summarizeDecision(mergedValue);
+      if (hasReviewValue(onlineValue) && localValue && !shouldReplaceDecision(onlineValue, localValue) && sameSummary(mergedSummary, onlineSummary)) {
+        preservedFromOnline.push({ reviewId, online: onlineSummary, local: localSummary });
+      }
+      if (hasReviewValue(localValue) && shouldReplaceDecision(onlineValue || {}, localValue) && sameSummary(mergedSummary, localSummary)) {
+        adoptedFromLocal.push({ reviewId, online: onlineSummary, local: localSummary });
+      }
+      if (!sameSummary(onlineSummary, mergedSummary)) {
+        changed.push({ reviewId, before: onlineSummary, after: mergedSummary });
+      }
+    });
+
+    return {
+      schema: "MASICS_MARIO_REVIEW_SAVE_AUDIT_V1",
+      trackerVersion: version,
+      queueIdentity: cfg().queueIdentity,
+      queueVersion: cfg().queueVersion,
+      exportedAt,
+      previousOnlineExportedAt: online?.exportedAt || "",
+      source: "github-pages-cloud-viewer",
+      mergePolicy: "preserve existing online note/decision over blank local values; otherwise newest updatedAt wins",
+      totalKnownRecords: records.length || cfg().expectedRecordCount || 636,
+      onlineDecisionCount: Object.keys(online?.decisions || {}).length,
+      localDecisionCount: Object.keys(localProgress?.decisions || {}).length,
+      mergedDecisionCount: Object.keys(mergedDecisions || {}).length,
+      changedCount: changed.length,
+      preservedFromOnlineCount: preservedFromOnline.length,
+      adoptedFromLocalCount: adoptedFromLocal.length,
+      ignoredUnknownLocalCount: ignoredUnknownLocalIds.length,
+      changed,
+      preservedFromOnline,
+      adoptedFromLocal,
+      ignoredUnknownLocalIds
+    };
   }
 
   function normalizeDecision(value) {
@@ -85,7 +169,7 @@
     const knownIds = new Set(records.map((record) => record.review_id));
     const filtered = {};
     Object.entries(decisions || {}).forEach(([reviewId, value]) => {
-      if (knownIds.has(reviewId) && value && typeof value === "object") filtered[reviewId] = normalizeDecision(value);
+      if (knownIds.has(reviewId) && value && typeof value === "object" && hasReviewValue(value)) filtered[reviewId] = normalizeDecision(value);
     });
     return filtered;
   }
@@ -246,7 +330,7 @@
         trackerVersion: version,
         exportedAt,
         source: "github-pages-cloud-viewer",
-        mergePolicy: "newest updatedAt per review_id",
+        mergePolicy: "preserve existing online note/decision over blank local values; otherwise newest updatedAt wins",
         reviewer: "Mario",
         userAgent: navigator.userAgent,
         url: location.href,
@@ -259,10 +343,14 @@
       const jsonText = JSON.stringify(payload, null, 2);
       const csvText = buildCsv(rows);
       const stamp = exportedAt.replace(/[:.]/g, "-");
+      const audit = buildAudit(records, online, localProgress, mergedDecisions, exportedAt);
+      const auditText = JSON.stringify(audit, null, 2);
 
       await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, jsonText, "overwrite");
       await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, csvText, "overwrite");
       await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, jsonText, "add");
+      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`, auditText, "overwrite");
+      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, auditText, "add");
 
       saveLocalProgress({ queueIdentity: cfg().queueIdentity, decisions: mergedDecisions, exportedAt });
       window.localStorage.setItem(stampKey("last_online_sync_at"), exportedAt);

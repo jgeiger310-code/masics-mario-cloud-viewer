@@ -120,11 +120,23 @@
     return Number.isFinite(time) ? time : 0;
   }
 
+  function hasReviewValue(value) {
+    return Boolean(value && (String(value.decision || "") || String(value.notes || "")));
+  }
+
+  function shouldReplaceDecision(current, candidate) {
+    const currentHasValue = hasReviewValue(current);
+    const candidateHasValue = hasReviewValue(candidate);
+    if (currentHasValue && !candidateHasValue) return false;
+    if (!currentHasValue && candidateHasValue) return true;
+    return updatedAt(candidate?.updatedAt) >= updatedAt(current?.updatedAt);
+  }
+
   function mergeDecisions(onlineDecisions, localDecisions) {
     const merged = { ...(onlineDecisions || {}) };
     Object.entries(localDecisions || {}).forEach(([reviewId, local]) => {
       const current = merged[reviewId] || {};
-      if (updatedAt(local.updatedAt) >= updatedAt(current.updatedAt)) merged[reviewId] = local;
+      if (shouldReplaceDecision(current, local)) merged[reviewId] = local;
     });
     return merged;
   }
@@ -143,7 +155,7 @@
     const knownIds = new Set(records.map((record) => record.review_id));
     const filtered = {};
     Object.entries(decisions || {}).forEach(([reviewId, value]) => {
-      if (knownIds.has(reviewId) && value && typeof value === "object") filtered[reviewId] = normalizeDecision(value);
+      if (knownIds.has(reviewId) && value && typeof value === "object" && hasReviewValue(value)) filtered[reviewId] = normalizeDecision(value);
     });
     return filtered;
   }
