@@ -229,7 +229,7 @@
     if (!online) return { reviewed: 0, imported: false };
     const local = loadProgress();
     const decisions = filterKnownDecisions(mergeDecisions(online.decisions, local.decisions));
-    const reviewed = Object.values(decisions).filter((saved) => saved && (saved.decision || saved.notes)).length;
+    const reviewed = Object.values(decisions).filter((saved) => saved && saved.decision).length;
     saveProgress({ queueIdentity: cfg.queueIdentity, decisions, exportedAt: online.exportedAt || new Date().toISOString() });
     if (online.exportedAt) markSyncedOnline(online.exportedAt);
     return { reviewed, imported: true };
@@ -242,7 +242,7 @@
 
   function isReviewed(record) {
     const saved = progressFor(record.review_id);
-    return Boolean(saved.decision || saved.notes);
+    return Boolean(saved.decision);
   }
 
   function reviewCounts() {
@@ -551,7 +551,7 @@
     const progress = loadProgress();
     return records.filter((record) => {
       const saved = progress.decisions[record.review_id] || {};
-      const reviewed = Boolean(saved.decision || saved.notes);
+      const reviewed = Boolean(saved.decision);
       if (els.filter.value === "pending" && reviewed) return false;
       if (els.filter.value === "reviewed" && !reviewed) return false;
       if (!q) return true;
@@ -685,7 +685,7 @@
     const decisions = progress.decisions || {};
     return records.map((record) => {
       const saved = decisions[record.review_id] || {};
-      if (!(saved.decision || saved.notes)) return null;
+      if (!saved.decision) return null;
       return {
         queue_number: record.queue_number,
         filename: record.filename,

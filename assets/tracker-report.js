@@ -255,7 +255,7 @@
         updatedAt: saved?.updatedAt || "",
         fileType: record.file_type || record.extension || ""
       };
-    }).filter((row) => row.decision || row.notes).sort((a, b) => Number(a.queue || 0) - Number(b.queue || 0));
+    }).filter((row) => row.decision).sort((a, b) => Number(a.queue || 0) - Number(b.queue || 0));
   }
 
   function filteredReviewedRows() {
@@ -270,7 +270,7 @@
 
   function renderMetrics(rows) {
     const total = latestProgress.total || manifestRecords.length || cfg.expectedRecordCount || "-";
-    const reviewed = latestProgress.reviewed || rows.length || 0;
+    const reviewed = rows.length || 0;
     const pending = latestProgress.pending ?? Math.max(0, Number(total || 0) - reviewed);
     const progressBackups = backupEntries.filter((entry) => /^MASICS_MARIO_REVIEW_PROGRESS_/i.test(entry.name || "")).length;
     const auditBackups = backupEntries.filter((entry) => /^MASICS_MARIO_REVIEW_AUDIT_/i.test(entry.name || "")).length;

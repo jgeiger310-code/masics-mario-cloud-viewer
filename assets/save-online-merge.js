@@ -314,7 +314,7 @@
         decision,
         notes,
         updated_at: saved.updatedAt || "",
-        reviewed: Boolean(decision || notes),
+        reviewed: Boolean(decision),
         dropbox_path: record.dropbox_path || ""
       };
     });
