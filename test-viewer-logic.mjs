@@ -47,8 +47,10 @@ const trackerReport = read("assets/tracker-report.js");
 test("live page references current performance asset versions", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260707-4/);
-  assert.match(html, /assets\/app\.js\?v=20260707-17/);
+  assert.match(html, /assets\/styles\.css\?v=20260707-7/);
+  assert.match(html, /assets\/app\.js\?v=20260707-18/);
   assert.match(html, /assets\/safe-preview\.js\?v=20260707-18/);
+  assert.match(html, /assets\/save-online-merge\.js\?v=20260707-12/);
 });
 
 test("manifest validation allows appended records above protected baseline", () => {
@@ -62,7 +64,7 @@ test("tracker metrics prefer live manifest total over stale progress total", () 
   const fn = extractFunction(trackerReport, "renderMetrics");
   assert.match(fn, /manifestRecords\.length \|\| latestProgress\.total/);
   const html = read("tracker.html");
-  assert.match(html, /assets\/tracker-report\.js\?v=20260707-7/);
+  assert.match(html, /assets\/tracker-report\.js\?v=20260707-8/);
 });
 
 test("record changes emit exactly the preview event hook", () => {
@@ -80,6 +82,31 @@ test("queue update avoids full list rebuild in normal note typing path", () => {
   const fn = extractFunction(app, "setProgressFor");
   assert.match(fn, /needsFullListRefresh/);
   assert.match(fn, /else refreshListState\(\)/);
+});
+
+test("decision dropdown saves on input and change events", () => {
+  assert.match(app, /els\.decision\.addEventListener\("change", saveDecisionFromControls\)/);
+  assert.match(app, /els\.decision\.addEventListener\("input", saveDecisionFromControls\)/);
+  assert.match(saveMerge, /target\.id === "notes" \|\| target\.id === "decision"/);
+});
+
+test("notes-only rows are visible as needs dropdown", () => {
+  const html = read("index.html");
+  const trackerHtml = read("tracker.html");
+  const styles = read("assets/styles.css");
+  assert.match(html, /option value="needs_dropdown"/);
+  assert.match(trackerHtml, /option value="needs_dropdown"/);
+  assert.match(app, /function needsDropdown/);
+  assert.match(app, /Needs dropdown/);
+  assert.match(styles, /button\.needs-dropdown/);
+  assert.match(trackerReport, /needsDropdown/);
+  assert.match(trackerReport, /Needs dropdown/);
+  assert.match(trackerReport, /needs_dropdown/);
+  assert.match(trackerReport, /"needs_dropdown"/);
+});
+
+test("tracker metrics use all saved rows, not the active filter", () => {
+  assert.match(trackerReport, /function render\(\) {\s+const allRows = reviewedRows\(\);\s+renderMetrics\(allRows\);\s+renderReviewed\(filteredReviewedRows\(\)\);/);
 });
 
 test("normal save merge keeps existing online decisions over blank local values", () => {

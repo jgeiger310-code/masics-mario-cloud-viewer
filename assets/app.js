@@ -252,6 +252,11 @@
     return saved.decision === "delete";
   }
 
+  function needsDropdown(record, progress = null) {
+    const saved = progress ? (progress.decisions[record.review_id] || {}) : progressFor(record.review_id);
+    return Boolean(!saved.decision && String(saved.notes || "").trim());
+  }
+
   function reviewCounts() {
     const progress = loadProgress();
     let reviewed = 0;
@@ -304,9 +309,10 @@
     const button = els.list.querySelector(`button[data-review-id="${cssEscape(record.review_id)}"]`);
     if (!button) return;
     const reviewed = isReviewed(record, progress);
-    button.className = `${active && active.review_id === record.review_id ? "active " : ""}${reviewed ? "reviewed" : "pending"}`.trim();
+    const notesOnly = needsDropdown(record, progress);
+    button.className = `${active && active.review_id === record.review_id ? "active " : ""}${reviewed ? "reviewed" : notesOnly ? "needs-dropdown" : "pending"}`.trim();
     const state = button.querySelector(".queue-state");
-    if (state) state.textContent = reviewed ? "Done" : "Open";
+    if (state) state.textContent = reviewed ? "Done" : notesOnly ? "Needs dropdown" : "Open";
   }
 
   function refreshListState(previousReviewId = "") {
@@ -596,7 +602,9 @@
       const saved = progress.decisions[record.review_id] || {};
       if (saved.decision === "delete") return false;
       const reviewed = Boolean(saved.decision);
+      const notesOnly = Boolean(!saved.decision && String(saved.notes || "").trim());
       if (els.filter.value === "pending" && reviewed) return false;
+      if (els.filter.value === "needs_dropdown" && !notesOnly) return false;
       if (els.filter.value === "reviewed" && !reviewed) return false;
       if (els.filter.value === "duplicate" && saved.decision !== "duplicate") return false;
       if (!q) return true;
@@ -609,10 +617,11 @@
     const progress = loadProgress();
     filteredRecords().forEach((record) => {
       const reviewed = isReviewed(record, progress);
+      const notesOnly = needsDropdown(record, progress);
       const item = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `${active && active.review_id === record.review_id ? "active " : ""}${reviewed ? "reviewed" : "pending"}`.trim();
+      button.className = `${active && active.review_id === record.review_id ? "active " : ""}${reviewed ? "reviewed" : notesOnly ? "needs-dropdown" : "pending"}`.trim();
       button.dataset.reviewId = record.review_id;
       const number = document.createElement("span");
       number.className = "queue-number";
@@ -622,7 +631,7 @@
       name.textContent = record.filename;
       const state = document.createElement("span");
       state.className = "queue-state";
-      state.textContent = reviewed ? "Done" : "Open";
+      state.textContent = reviewed ? "Done" : notesOnly ? "Needs dropdown" : "Open";
       button.append(number, name, state);
       button.addEventListener("click", () => showRecord(record));
       item.appendChild(button);
@@ -877,7 +886,9 @@
     if (els.nextPending) els.nextPending.addEventListener("click", selectNextPending);
     if (els.nextPendingTop) els.nextPendingTop.addEventListener("click", selectNextPending);
     els.load.addEventListener("click", loadEvidence);
-    els.decision.addEventListener("change", () => active && setProgressFor(active.review_id, { decision: els.decision.value, notes: els.notes.value }));
+    const saveDecisionFromControls = () => active && setProgressFor(active.review_id, { decision: els.decision.value, notes: els.notes.value });
+    els.decision.addEventListener("change", saveDecisionFromControls);
+    els.decision.addEventListener("input", saveDecisionFromControls);
     els.notes.addEventListener("input", () => active && setProgressFor(active.review_id, { decision: els.decision.value, notes: els.notes.value }));
     els.saveOnline.addEventListener("click", () => saveOnline().catch((err) => updateSaveStatus(err.message || "Online save failed.")));
     els.exportProgress.addEventListener("click", exportProgress);

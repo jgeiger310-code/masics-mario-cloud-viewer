@@ -439,6 +439,6 @@
   document.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (target.id === "notes") scheduleAutoSave();
+    if (target.id === "notes" || target.id === "decision") scheduleAutoSave();
   }, true);
 })();

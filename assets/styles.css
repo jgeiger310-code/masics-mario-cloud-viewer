@@ -30,6 +30,8 @@ p { margin: 0; }
 .queue-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queue-state { justify-self: end; color: #1f6f45; font-size: 12px; font-weight: 700; }
 .queue-list button.pending .queue-state { color: #8a5a00; }
+.queue-list button.needs-dropdown .queue-state { color: #b42318; }
+.queue-list button.needs-dropdown .queue-name { color: #6b2b20; }
 .review-panel { min-width: 0; padding: 14px 18px 0; overflow: auto; min-height: 0; }
 .empty-state { padding: 28px; border: 1px solid #d7dbe0; background: #fff; border-radius: 8px; }
 .record-header { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 12px; position: sticky; top: 0; z-index: 3; background: #f5f6f7; padding: 4px 0 10px; border-bottom: 1px solid #e4e7ea; }

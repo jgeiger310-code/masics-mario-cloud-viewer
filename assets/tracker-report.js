@@ -265,23 +265,27 @@
     const decisions = latestProgress?.decisions || {};
     return Object.entries(decisions).map(([reviewId, saved]) => {
       const record = recordsById.get(reviewId) || {};
+      const decision = saved?.decision || "";
+      const notes = saved?.notes || "";
       return {
         queue: record.queue_number || "",
         filename: record.filename || reviewId,
         reviewId,
-        decision: saved?.decision || "",
-        notes: saved?.notes || "",
+        decision,
+        needsDropdown: Boolean(!decision && String(notes).trim()),
+        notes,
         updatedAt: saved?.updatedAt || "",
         fileType: record.file_type || record.extension || ""
       };
-    }).filter((row) => row.decision).sort((a, b) => Number(a.queue || 0) - Number(b.queue || 0));
+    }).filter((row) => row.decision || row.needsDropdown).sort((a, b) => Number(a.queue || 0) - Number(b.queue || 0));
   }
 
   function filteredReviewedRows() {
     const search = els.search.value.trim().toLowerCase();
     const decision = els.decision.value;
     return reviewedRows().filter((row) => {
-      if (decision !== "all" && row.decision !== decision) return false;
+      if (decision === "needs_dropdown" && !row.needsDropdown) return false;
+      if (decision !== "all" && decision !== "needs_dropdown" && row.decision !== decision) return false;
       if (!search) return true;
       return [row.queue, row.filename, row.reviewId, row.decision, row.notes, row.updatedAt, row.fileType].join(" ").toLowerCase().includes(search);
     });
@@ -306,14 +310,14 @@
   function renderReviewed(rows) {
     els.reviewedCount.textContent = `${rows.length} shown`;
     if (!rows.length) {
-      els.reviewedBody.innerHTML = `<tr><td colspan="5">No decision or excluded files match the current filter.</td></tr>`;
+      els.reviewedBody.innerHTML = `<tr><td colspan="5">No decision, notes-only, or excluded files match the current filter.</td></tr>`;
       return;
     }
     els.reviewedBody.innerHTML = rows.map((row) => `
       <tr>
         <td>${escapeHtml(row.queue)}</td>
         <td><strong>${escapeHtml(row.filename)}</strong><br><span class="muted">${escapeHtml(row.reviewId)}</span></td>
-        <td>${escapeHtml(row.decision || "notes only")}</td>
+        <td>${escapeHtml(row.needsDropdown ? "Needs dropdown" : row.decision || "notes only")}</td>
         <td>${escapeHtml(formatTime(row.updatedAt))}</td>
         <td>${escapeHtml(row.notes)}</td>
       </tr>
@@ -367,9 +371,9 @@
   }
 
   function render() {
-    const rows = filteredReviewedRows();
-    renderMetrics(rows);
-    renderReviewed(rows);
+    const allRows = reviewedRows();
+    renderMetrics(allRows);
+    renderReviewed(filteredReviewedRows());
     renderBackups();
     renderAudit();
   }
@@ -390,8 +394,17 @@
   }
 
   function exportReviewedCsv() {
-    const header = ["queue", "filename", "review_id", "decision", "notes", "updated_at", "file_type"];
-    const lines = [header, ...filteredReviewedRows().map((row) => [row.queue, row.filename, row.reviewId, row.decision, row.notes, row.updatedAt, row.fileType])];
+    const header = ["queue", "filename", "review_id", "decision", "needs_dropdown", "notes", "updated_at", "file_type"];
+    const lines = [header, ...filteredReviewedRows().map((row) => [
+      row.queue,
+      row.filename,
+      row.reviewId,
+      row.decision,
+      row.needsDropdown ? "true" : "false",
+      row.notes,
+      row.updatedAt,
+      row.fileType
+    ])];
     downloadText(`masics-reviewed-files-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`, lines.map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n", "text/csv");
   }
 
