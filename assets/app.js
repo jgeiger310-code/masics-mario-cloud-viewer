@@ -166,6 +166,7 @@
   }
 
   function shouldReplaceDecision(current, candidate) {
+    if (String(current?.decision || "") === "delete" && String(candidate?.decision || "") !== "delete") return false;
     if (String(current?.decision || "") && !String(candidate?.decision || "")) return false;
     const currentHasValue = hasReviewValue(current);
     const candidateHasValue = hasReviewValue(candidate);
@@ -228,8 +229,7 @@
   async function syncOnlineProgressIntoBrowser() {
     const online = await loadOnlineProgress();
     if (!online) return { reviewed: 0, imported: false };
-    const local = loadProgress();
-    const decisions = filterKnownDecisions(mergeDecisions(online.decisions, local.decisions));
+    const decisions = filterKnownDecisions(online.decisions);
     const reviewed = Object.values(decisions).filter((saved) => saved && saved.decision && saved.decision !== "delete").length;
     const excluded = Object.values(decisions).filter((saved) => saved && saved.decision === "delete").length;
     saveProgress({ queueIdentity: cfg.queueIdentity, decisions, exportedAt: online.exportedAt || new Date().toISOString() });
