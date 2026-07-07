@@ -39,6 +39,28 @@
     els.status.textContent = message;
   }
 
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  function isTransientFetchError(err) {
+    return /Failed to fetch|NetworkError|Load failed/i.test(String(err && err.message || err || ""));
+  }
+
+  async function fetchWithRetry(url, options) {
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await fetch(url, options);
+      } catch (err) {
+        lastError = err;
+        if (!isTransientFetchError(err)) throw err;
+        await delay(600 * (attempt + 1));
+      }
+    }
+    throw lastError || new Error("Dropbox request failed before it could start.");
+  }
+
   function token() {
     return authStore.getItem("masics_access_token") || "";
   }
@@ -120,7 +142,7 @@
   }
 
   async function dropboxRpc(endpoint, body) {
-    const response = await fetch(DROPBOX_RPC + endpoint, {
+    const response = await fetchWithRetry(DROPBOX_RPC + endpoint, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token()}`,
@@ -135,7 +157,7 @@
   }
 
   async function dropboxDownload(locator) {
-    const response = await fetch(DROPBOX_CONTENT + "files/download", {
+    const response = await fetchWithRetry(DROPBOX_CONTENT + "files/download", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token()}`,
@@ -185,17 +207,26 @@
     return entries;
   }
 
+  async function loadOptionalJson(label, locators) {
+    try {
+      setStatus(`Loading ${label} from Dropbox...`);
+      return await downloadJson(locators);
+    } catch (err) {
+      if (isTransientFetchError(err)) throw new Error(`Dropbox connected, but the browser blocked the ${label} download. Refresh this tracker and try again.`);
+      throw err;
+    }
+  }
+
   async function loadData() {
     if (!token()) return;
     signedInUi(true);
     setStatus("Loading online tracker files from Dropbox...");
     const base = await resolveProgressFolder();
-    const [manifest, progress, audit, entries] = await Promise.all([
-      downloadJson([cfg.manifestDropboxPath, cfg.manifestDropboxPathAlternates || []]),
-      downloadJson([cfg.progressDropboxLatestJsonId, `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`]),
-      downloadJson([`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`]),
-      listFolder(cfg.progressDropboxFolderId || base).catch(() => listFolder(base))
-    ]);
+    const manifest = await loadOptionalJson("queue manifest", [cfg.manifestDropboxPath, cfg.manifestDropboxPathAlternates || []]);
+    const progress = await loadOptionalJson("latest progress", [cfg.progressDropboxLatestJsonId, `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`]);
+    const audit = await loadOptionalJson("latest audit", [`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`]);
+    setStatus("Loading backup snapshot list from Dropbox...");
+    const entries = await listFolder(cfg.progressDropboxFolderId || base).catch(() => listFolder(base));
     manifestRecords = Array.isArray(manifest?.records) ? manifest.records : [];
     latestProgress = progress || {};
     latestAudit = audit || {};
