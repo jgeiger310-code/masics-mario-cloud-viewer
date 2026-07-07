@@ -404,8 +404,10 @@
     const pending = Math.max(0, records.length - reviewed);
     const source = onlineSync.imported ? " Synced online progress." : "";
     setStatus(`Loaded ${records.length} protected queue records. Pending: ${pending}. Reviewed: ${reviewed}.${source}`);
-    updateSaveStatus();
     renderList();
+    if (records.length) showRecord(records[0]);
+    setStatus(`Loaded ${records.length} protected queue records. Pending: ${pending}. Reviewed: ${reviewed}.${source}`);
+    updateSaveStatus();
   }
 
   function validateManifest(loaded) {
