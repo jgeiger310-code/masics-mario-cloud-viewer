@@ -115,6 +115,45 @@
     window.localStorage.setItem(progressKey(), JSON.stringify(progress));
   }
 
+  function updatedAt(value) {
+    const time = Date.parse(value || "");
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  function mergeDecisions(onlineDecisions, localDecisions) {
+    const merged = { ...(onlineDecisions || {}) };
+    Object.entries(localDecisions || {}).forEach(([reviewId, local]) => {
+      const current = merged[reviewId] || {};
+      if (updatedAt(local.updatedAt) >= updatedAt(current.updatedAt)) merged[reviewId] = local;
+    });
+    return merged;
+  }
+
+  async function loadOnlineProgress() {
+    const base = progressDropboxBase();
+    if (!base) return null;
+    try {
+      const response = await dropboxDownload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`);
+      const online = await response.json();
+      if (!online || online.queueIdentity !== cfg.queueIdentity || typeof online.decisions !== "object") return null;
+      return online;
+    } catch (err) {
+      if (!isLookupError(err)) throw err;
+      return null;
+    }
+  }
+
+  async function syncOnlineProgressIntoBrowser() {
+    const online = await loadOnlineProgress();
+    if (!online) return { reviewed: 0, imported: false };
+    const local = loadProgress();
+    const decisions = mergeDecisions(online.decisions, local.decisions);
+    const reviewed = Object.values(decisions).filter((saved) => saved && (saved.decision || saved.notes)).length;
+    saveProgress({ queueIdentity: cfg.queueIdentity, decisions, exportedAt: online.exportedAt || new Date().toISOString() });
+    if (online.exportedAt) markSyncedOnline(online.exportedAt);
+    return { reviewed, imported: true };
+  }
+
   function progressFor(id) {
     const progress = loadProgress();
     return progress.decisions[id] || { decision: "", notes: "", updatedAt: "" };
@@ -332,7 +371,11 @@
     validateManifest(loaded);
     manifest = loaded;
     records = loaded.records;
-    setStatus(`Loaded ${records.length} protected queue records. Pending: ${loaded.pending_count}. Reviewed: ${loaded.reviewed_count}.`);
+    const onlineSync = await syncOnlineProgressIntoBrowser();
+    const reviewed = onlineSync.imported ? onlineSync.reviewed : loaded.reviewed_count;
+    const pending = Math.max(0, records.length - reviewed);
+    const source = onlineSync.imported ? " Synced online progress." : "";
+    setStatus(`Loaded ${records.length} protected queue records. Pending: ${pending}. Reviewed: ${reviewed}.${source}`);
     updateSaveStatus();
     renderList();
   }
