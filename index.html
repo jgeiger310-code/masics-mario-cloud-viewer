@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' https://www.dropbox.com https://api.dropboxapi.com https://content.dropboxapi.com; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>MASICS Mario Review Viewer</title>
-  <link rel="stylesheet" href="assets/styles.css?v=20260706-16">
+  <link rel="stylesheet" href="assets/styles.css?v=20260707-2">
 </head>
 <body>
   <header class="topbar">
@@ -29,6 +29,11 @@
           <option value="reviewed">Reviewed</option>
         </select>
       </div>
+      <div class="queue-summary">
+        <span id="queue-counts">0 loaded</span>
+        <button id="jump-active" type="button">Current</button>
+        <button id="next-pending-top" type="button">Next Pending</button>
+      </div>
       <ol id="queue-list" class="queue-list"></ol>
     </section>
     <section class="review-panel">
@@ -40,7 +45,12 @@
             <p id="record-position" class="muted"></p>
             <h2 id="record-title"></h2>
           </div>
-          <button id="load-evidence">Preview Evidence</button>
+          <div class="record-actions">
+            <button id="previous-record" type="button">Previous</button>
+            <button id="next-record" type="button">Next</button>
+            <button id="next-pending" class="primary" type="button">Next Pending</button>
+            <button id="load-evidence" type="button">Preview Evidence</button>
+          </div>
         </div>
         <dl id="record-meta" class="record-meta"></dl>
         <div class="decision-grid">
@@ -71,7 +81,7 @@
     </section>
   </main>
   <script src="assets/config.js?v=20260707-3"></script>
-  <script src="assets/app.js?v=20260707-5"></script>
+  <script src="assets/app.js?v=20260707-6"></script>
   <script src="assets/safe-preview.js?v=20260706-16"></script>
   <script src="assets/tracker.js?v=20260706-16"></script>
   <script src="assets/save-reminder.js?v=20260706-16"></script>

@@ -21,6 +21,9 @@
     signOut: $("sign-out"),
     search: $("search"),
     filter: $("filter"),
+    counts: $("queue-counts"),
+    jumpActive: $("jump-active"),
+    nextPendingTop: $("next-pending-top"),
     list: $("queue-list"),
     empty: $("empty-state"),
     view: $("record-view"),
@@ -29,6 +32,9 @@
     meta: $("record-meta"),
     decision: $("decision"),
     notes: $("notes"),
+    previousRecord: $("previous-record"),
+    nextRecord: $("next-record"),
+    nextPending: $("next-pending"),
     load: $("load-evidence"),
     evidenceStatus: $("evidence-status"),
     preview: $("preview"),
@@ -199,6 +205,67 @@
     return progress.decisions[id] || { decision: "", notes: "", updatedAt: "" };
   }
 
+  function isReviewed(record) {
+    const saved = progressFor(record.review_id);
+    return Boolean(saved.decision || saved.notes);
+  }
+
+  function reviewCounts() {
+    const reviewed = records.filter(isReviewed).length;
+    return {
+      total: records.length,
+      reviewed,
+      pending: Math.max(0, records.length - reviewed),
+      visible: filteredRecords().length
+    };
+  }
+
+  function activeIndex() {
+    if (!active) return -1;
+    return records.findIndex((record) => record.review_id === active.review_id);
+  }
+
+  function updateQueueSummary() {
+    if (!els.counts) return;
+    const counts = reviewCounts();
+    els.counts.textContent = `${counts.visible} shown | ${counts.reviewed} reviewed | ${counts.pending} pending`;
+  }
+
+  function updateReviewNavigation() {
+    const index = activeIndex();
+    const hasRecords = records.length > 0 && index >= 0;
+    const pendingCount = records.filter((record) => !isReviewed(record)).length;
+    if (els.previousRecord) els.previousRecord.disabled = !hasRecords || index <= 0;
+    if (els.nextRecord) els.nextRecord.disabled = !hasRecords || index >= records.length - 1;
+    if (els.nextPending) els.nextPending.disabled = pendingCount === 0;
+    if (els.nextPendingTop) els.nextPendingTop.disabled = pendingCount === 0;
+    if (els.jumpActive) els.jumpActive.disabled = !hasRecords;
+  }
+
+  function scrollActiveIntoView() {
+    if (!active || !els.list) return;
+    const button = els.list.querySelector(`button[data-review-id="${CSS.escape(active.review_id)}"]`);
+    if (button) button.scrollIntoView({ block: "nearest" });
+  }
+
+  function selectRecordAt(index) {
+    if (index < 0 || index >= records.length) return;
+    showRecord(records[index]);
+  }
+
+  function selectNextPending() {
+    if (!records.length) return;
+    const start = activeIndex();
+    for (let offset = 1; offset <= records.length; offset += 1) {
+      const index = (Math.max(start, -1) + offset) % records.length;
+      if (!isReviewed(records[index])) {
+        showRecord(records[index]);
+        return;
+      }
+    }
+    setStatus("No pending records remain in this queue.");
+  }
+
   function setProgressFor(id, patch) {
     const progress = loadProgress();
     const savedAt = new Date().toISOString();
@@ -206,6 +273,7 @@
     saveProgress(progress);
     markSaved(savedAt);
     renderList();
+    updateReviewNavigation();
   }
 
   async function requestPersistentStorage() {
@@ -458,15 +526,29 @@
   function renderList() {
     els.list.innerHTML = "";
     filteredRecords().forEach((record) => {
+      const reviewed = isReviewed(record);
       const item = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
-      button.className = active && active.review_id === record.review_id ? "active" : "";
-      button.textContent = `${record.queue_number}. ${record.filename}`;
+      button.className = `${active && active.review_id === record.review_id ? "active " : ""}${reviewed ? "reviewed" : "pending"}`.trim();
+      button.dataset.reviewId = record.review_id;
+      const number = document.createElement("span");
+      number.className = "queue-number";
+      number.textContent = `${record.queue_number}.`;
+      const name = document.createElement("span");
+      name.className = "queue-name";
+      name.textContent = record.filename;
+      const state = document.createElement("span");
+      state.className = "queue-state";
+      state.textContent = reviewed ? "Done" : "Open";
+      button.append(number, name, state);
       button.addEventListener("click", () => showRecord(record));
       item.appendChild(button);
       els.list.appendChild(item);
     });
+    updateQueueSummary();
+    updateReviewNavigation();
+    scrollActiveIntoView();
   }
 
   function showRecord(record) {
@@ -496,7 +578,10 @@
     els.evidenceStatus.textContent = "Evidence is not loaded until requested.";
     els.preview.innerHTML = "";
     renderList();
+    const panel = document.querySelector(".review-panel");
+    if (panel) panel.scrollTo({ top: 0 });
     updateExportStatus();
+    updateReviewNavigation();
     updateSaveStatus(saved.updatedAt ? `Autosaved locally: ${formatLocalTime(saved.updatedAt)}` : undefined);
   }
 
@@ -692,10 +777,17 @@
       els.empty.hidden = false;
       els.empty.textContent = "Signed out. Sign in with Dropbox to load the protected queue.";
       els.list.innerHTML = "";
+      if (els.counts) els.counts.textContent = "0 loaded";
+      updateReviewNavigation();
       setStatus("Signed out.");
     });
     els.search.addEventListener("input", renderList);
     els.filter.addEventListener("change", renderList);
+    if (els.jumpActive) els.jumpActive.addEventListener("click", scrollActiveIntoView);
+    if (els.previousRecord) els.previousRecord.addEventListener("click", () => selectRecordAt(activeIndex() - 1));
+    if (els.nextRecord) els.nextRecord.addEventListener("click", () => selectRecordAt(activeIndex() + 1));
+    if (els.nextPending) els.nextPending.addEventListener("click", selectNextPending);
+    if (els.nextPendingTop) els.nextPendingTop.addEventListener("click", selectNextPending);
     els.load.addEventListener("click", loadEvidence);
     els.decision.addEventListener("change", () => active && setProgressFor(active.review_id, { decision: els.decision.value, notes: els.notes.value }));
     els.notes.addEventListener("input", () => active && setProgressFor(active.review_id, { decision: els.decision.value, notes: els.notes.value }));
