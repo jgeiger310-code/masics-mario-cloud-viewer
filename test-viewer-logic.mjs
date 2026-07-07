@@ -48,7 +48,7 @@ test("live page references current performance asset versions", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260707-4/);
   assert.match(html, /assets\/styles\.css\?v=20260707-9/);
-  assert.match(html, /assets\/app\.js\?v=20260707-22/);
+  assert.match(html, /assets\/app\.js\?v=20260707-23/);
   assert.match(html, /assets\/safe-preview\.js\?v=20260707-22/);
   assert.match(html, /assets\/save-online-merge\.js\?v=20260707-12/);
 });
@@ -169,6 +169,12 @@ test("normal save merge keeps existing online decisions over blank local values"
   assert.equal(context.result.a.notes, "online note");
   assert.equal(context.result.b.decision, "responsive");
   assert.equal(context.result.c.decision, "duplicate");
+});
+
+test("initial online sync merges with existing local progress instead of replacing it", () => {
+  const fn = extractFunction(app, "syncOnlineProgressIntoBrowser");
+  assert.match(fn, /const localProgress = loadProgress\(\)/);
+  assert.match(fn, /filterKnownDecisions\(mergeDecisions\(online\.decisions, localProgress\.decisions \|\| \{\}\)\)/);
 });
 
 test("delete/exclude is not overwritten by a later non-delete local decision", () => {
