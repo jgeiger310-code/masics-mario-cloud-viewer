@@ -271,7 +271,7 @@
   function renderMetrics(rows) {
     const total = latestProgress.total || manifestRecords.length || cfg.expectedRecordCount || "-";
     const reviewed = rows.length || 0;
-    const pending = latestProgress.pending ?? Math.max(0, Number(total || 0) - reviewed);
+    const pending = Math.max(0, Number(total || 0) - reviewed);
     const progressBackups = backupEntries.filter((entry) => /^MASICS_MARIO_REVIEW_PROGRESS_/i.test(entry.name || "")).length;
     const auditBackups = backupEntries.filter((entry) => /^MASICS_MARIO_REVIEW_AUDIT_/i.test(entry.name || "")).length;
     els.total.textContent = total;
