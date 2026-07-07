@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Opening MASICS Viewer</title>
+</head>
+<body>
+  <p>Opening the latest MASICS viewer...</p>
+  <script>
+    const target = new URL("./", window.location.href);
+    target.searchParams.set("fresh", Date.now().toString());
+    window.location.replace(target.toString());
+  </script>
+  <noscript>
+    <p><a href="./?fresh=manual">Open the MASICS viewer</a></p>
+  </noscript>
+</body>
+</html>
