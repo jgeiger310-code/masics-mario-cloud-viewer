@@ -50,8 +50,21 @@
     els.status.textContent = message;
   }
 
+  function describeNetworkError(action, err) {
+    const message = String(err && err.message || err || "");
+    if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
+      return `Dropbox connected, but the browser blocked the ${action}. Refresh and try Sign in again. If it repeats, turn off browser privacy/ad-block extensions for this viewer and Dropbox.`;
+    }
+    return message || `Dropbox ${action} failed.`;
+  }
+
   function escapeText(value) {
     return String(value || "");
+  }
+
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(String(value));
+    return String(value).replace(/["\\]/g, "\\$&");
   }
 
   function progressKey() {
@@ -244,7 +257,7 @@
 
   function scrollActiveIntoView() {
     if (!active || !els.list) return;
-    const button = els.list.querySelector(`button[data-review-id="${CSS.escape(active.review_id)}"]`);
+    const button = els.list.querySelector(`button[data-review-id="${cssEscape(active.review_id)}"]`);
     if (button) button.scrollIntoView({ block: "nearest" });
   }
 
@@ -303,6 +316,7 @@
       setStatus("Dropbox app key is not configured yet.");
       return;
     }
+    setStatus("Opening Dropbox sign-in...");
     const state = randomBase64Url(24);
     const verifier = randomBase64Url(64);
     const challenge = await sha256Base64Url(verifier);
@@ -318,7 +332,7 @@
       token_access_type: "online",
       scope: cfg.scopes.join(" ")
     });
-    window.location.assign(`${DROPBOX_AUTH}?${params.toString()}`);
+    window.location.href = `${DROPBOX_AUTH}?${params.toString()}`;
   }
 
   async function handleCallback() {
@@ -764,7 +778,11 @@
   }
 
   function wireEvents() {
-    els.signIn.addEventListener("click", signIn);
+    els.signIn.addEventListener("click", () => {
+      signIn().catch((err) => {
+        setStatus(describeNetworkError("sign-in start", err));
+      });
+    });
     els.signOut.addEventListener("click", () => {
       downloadProgress("masics-progress-backup-before-signout");
       clearAuth();
@@ -825,10 +843,20 @@
         els.signIn.hidden = true;
         els.signOut.hidden = false;
         setStatus("Dropbox sign-in complete. Loading protected queue manifest...");
-        await loadManifest();
+        try {
+          await loadManifest();
+        } catch (err) {
+          clearAuth();
+          els.signIn.hidden = false;
+          els.signOut.hidden = true;
+          els.view.hidden = true;
+          els.empty.hidden = false;
+          els.empty.textContent = "Dropbox sign-in did not finish loading the protected queue. Try Sign in with Dropbox again.";
+          throw new Error(describeNetworkError("queue load", err));
+        }
       }
     } catch (err) {
-      setStatus(err.message);
+      setStatus(describeNetworkError("sign-in", err));
     }
   }
 
