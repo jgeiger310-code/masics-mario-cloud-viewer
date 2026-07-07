@@ -612,6 +612,23 @@
     });
   }
 
+  function selectVisibleRecordAfterFilter() {
+    const visibleRecords = filteredRecords();
+    renderList();
+    if (!visibleRecords.length) {
+      els.empty.hidden = false;
+      els.empty.textContent = "No records match the current filter.";
+      els.view.hidden = true;
+      return;
+    }
+    if (!active || !visibleRecords.some((record) => record.review_id === active.review_id)) {
+      showRecord(visibleRecords[0]);
+    } else {
+      refreshListState();
+      updateReviewNavigation();
+    }
+  }
+
   function renderList() {
     els.list.innerHTML = "";
     const progress = loadProgress();
@@ -703,7 +720,7 @@
   }
 
   function renderPreview(blob, url, record) {
-    const ext = String(record.extension || "").toLowerCase();
+    const ext = fileExtension(record);
     els.preview.innerHTML = "";
     if (blob.type.startsWith("image/") || [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"].includes(ext)) {
       const img = document.createElement("img");
@@ -736,6 +753,15 @@
       message.textContent = "Preview is unavailable for this file type. No file was downloaded.";
       els.preview.appendChild(message);
     }
+  }
+
+  function fileExtension(record) {
+    const fromExtension = String(record.extension || "").trim().toLowerCase();
+    if (fromExtension) return fromExtension.startsWith(".") ? fromExtension : `.${fromExtension}`;
+    const fromType = String(record.file_type || "").trim().toLowerCase();
+    if (fromType && !fromType.includes("/") && !fromType.startsWith(".")) return `.${fromType}`;
+    const fromName = String(record.filename || "").trim().toLowerCase().match(/\.[a-z0-9]{1,8}$/);
+    return fromName ? fromName[0] : "";
   }
 
   function taggedRows(progress) {
@@ -878,8 +904,8 @@
       updateReviewNavigation();
       setStatus("Signed out.");
     });
-    els.search.addEventListener("input", renderList);
-    els.filter.addEventListener("change", renderList);
+    els.search.addEventListener("input", selectVisibleRecordAfterFilter);
+    els.filter.addEventListener("change", selectVisibleRecordAfterFilter);
     if (els.jumpActive) els.jumpActive.addEventListener("click", scrollActiveIntoView);
     if (els.previousRecord) els.previousRecord.addEventListener("click", () => selectRecordAt(activeIndex() - 1));
     if (els.nextRecord) els.nextRecord.addEventListener("click", () => selectRecordAt(activeIndex() + 1));

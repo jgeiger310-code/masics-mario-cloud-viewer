@@ -48,8 +48,8 @@ test("live page references current performance asset versions", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260707-4/);
   assert.match(html, /assets\/styles\.css\?v=20260707-7/);
-  assert.match(html, /assets\/app\.js\?v=20260707-18/);
-  assert.match(html, /assets\/safe-preview\.js\?v=20260707-18/);
+  assert.match(html, /assets\/app\.js\?v=20260707-19/);
+  assert.match(html, /assets\/safe-preview\.js\?v=20260707-19/);
   assert.match(html, /assets\/save-online-merge\.js\?v=20260707-12/);
 });
 
@@ -72,10 +72,26 @@ test("record changes emit exactly the preview event hook", () => {
   assert.match(preview, /window\.addEventListener\("masics:record-change", \(\) => schedulePreview\(\)\)/);
 });
 
+test("filter changes select a visible record when the active record is hidden", () => {
+  assert.match(app, /function selectVisibleRecordAfterFilter/);
+  assert.match(app, /showRecord\(visibleRecords\[0\]\)/);
+  assert.match(app, /els\.filter\.addEventListener\("change", selectVisibleRecordAfterFilter\)/);
+  assert.match(app, /els\.search\.addEventListener\("input", selectVisibleRecordAfterFilter\)/);
+});
+
 test("preview no longer uses base64 FileReader path", () => {
   assert.doesNotMatch(preview, /readAsDataURL|FileReader|blobToDataUrl/);
   assert.match(preview, /URL\.createObjectURL\(blob\)/);
   assert.match(preview, /URL\.revokeObjectURL\(activePreviewUrl\)/);
+});
+
+test("manual safe preview supports media while auto preview stays image-light", () => {
+  assert.match(preview, /const audioExts = \["\.mp3", "\.wav", "\.m4a", "\.aac", "\.ogg"\]/);
+  assert.match(preview, /const videoExts = \["\.mp4", "\.mov", "\.m4v", "\.webm"\]/);
+  assert.match(preview, /function renderPreview/);
+  assert.match(preview, /document\.createElement\("audio"\)/);
+  assert.match(preview, /document\.createElement\("video"\)/);
+  assert.match(preview, /if \(!options\.force && !isImageRecord\(record\)\)/);
 });
 
 test("queue update avoids full list rebuild in normal note typing path", () => {

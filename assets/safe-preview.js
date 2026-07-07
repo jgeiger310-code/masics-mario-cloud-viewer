@@ -3,6 +3,10 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
+  const pdfExts = [".pdf"];
+  const audioExts = [".mp3", ".wav", ".m4a", ".aac", ".ogg"];
+  const videoExts = [".mp4", ".mov", ".m4v", ".webm"];
+  const textExts = [".txt", ".csv", ".json", ".md"];
   let records = null;
   let lastPreviewKey = "";
   let previewTimer = 0;
@@ -28,7 +32,16 @@
   }
 
   function isImageRecord(record) {
-    return imageExts.includes(String(record.extension || "").toLowerCase());
+    return imageExts.includes(fileExtension(record));
+  }
+
+  function fileExtension(record) {
+    const fromExtension = String(record.extension || "").trim().toLowerCase();
+    if (fromExtension) return fromExtension.startsWith(".") ? fromExtension : `.${fromExtension}`;
+    const fromType = String(record.file_type || "").trim().toLowerCase();
+    if (fromType && !fromType.includes("/") && !fromType.startsWith(".")) return `.${fromType}`;
+    const fromName = String(record.filename || "").trim().toLowerCase().match(/\.[a-z0-9]{1,8}$/);
+    return fromName ? fromName[0] : "";
   }
 
   async function dropboxDownload(locator) {
@@ -99,6 +112,44 @@
     preview.appendChild(message);
   }
 
+  function renderPreview(blob, url, record) {
+    const preview = $("preview");
+    const ext = fileExtension(record);
+    preview.innerHTML = "";
+    if (blob.type.startsWith("image/") || imageExts.includes(ext)) {
+      const img = document.createElement("img");
+      img.alt = record.filename;
+      img.src = url;
+      preview.appendChild(img);
+    } else if (blob.type === "application/pdf" || pdfExts.includes(ext)) {
+      const frame = document.createElement("iframe");
+      frame.title = record.filename;
+      frame.src = url;
+      preview.appendChild(frame);
+    } else if (blob.type.startsWith("audio/") || audioExts.includes(ext)) {
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.src = url;
+      preview.appendChild(audio);
+    } else if (blob.type.startsWith("video/") || videoExts.includes(ext)) {
+      const video = document.createElement("video");
+      video.controls = true;
+      video.src = url;
+      preview.appendChild(video);
+    } else if (blob.type.startsWith("text/") || textExts.includes(ext)) {
+      blob.text().then((text) => {
+        const pre = document.createElement("pre");
+        pre.textContent = text.slice(0, 200000);
+        preview.appendChild(pre);
+      });
+    } else {
+      const message = document.createElement("p");
+      message.className = "preview-message";
+      message.textContent = "Preview is unavailable for this file type. No file was downloaded.";
+      preview.appendChild(message);
+    }
+  }
+
   async function previewActiveRecord(options = {}) {
     const status = $("evidence-status");
     const preview = $("preview");
@@ -122,23 +173,20 @@
       const record = activeRecordFrom(allRecords);
       if (!record) throw new Error("No active record is selected.");
 
-      if (!isImageRecord(record)) {
+      if (!options.force && !isImageRecord(record)) {
         showNoDownloadMessage(record);
         status.textContent = "Safe auto-preview is image-only right now. No file was downloaded.";
         return;
       }
 
-      status.textContent = "Loading in-page image preview from Dropbox...";
+      status.textContent = isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : "Loading evidence preview from Dropbox...";
       const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
       const response = await downloadFirst(locators);
       const blob = await response.blob();
-      const img = document.createElement("img");
-      img.alt = record.filename;
       activePreviewUrl = URL.createObjectURL(blob);
-      img.src = activePreviewUrl;
       if (key !== selectedKey()) return;
-      preview.appendChild(img);
-      status.textContent = "Image preview loaded in-page. No file was downloaded.";
+      renderPreview(blob, activePreviewUrl, record);
+      status.textContent = isImageRecord(record) ? "Image preview loaded in-page. No file was downloaded." : "Evidence preview loaded in-page. No file was downloaded.";
     } catch (err) {
       lastPreviewKey = "";
       if (err.name !== "AbortError") status.textContent = err.message || "Unable to load image preview.";
