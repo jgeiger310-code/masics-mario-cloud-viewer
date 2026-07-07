@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
   const pdfExts = [".pdf"];
@@ -73,6 +74,11 @@
     return new Blob([blob], { type });
   }
 
+  function isStreamPreviewRecord(record) {
+    const ext = fileExtension(record);
+    return pdfExts.includes(ext) || audioExts.includes(ext) || videoExts.includes(ext);
+  }
+
   async function dropboxDownload(locator) {
     const response = await fetch(DROPBOX_CONTENT + "files/download", {
       method: "POST",
@@ -88,11 +94,42 @@
     return response;
   }
 
+  async function dropboxTemporaryLink(locator) {
+    const response = await fetch(DROPBOX_RPC + "files/get_temporary_link", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token()}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ path: locator })
+    });
+    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign in again.");
+    if (response.status === 403) throw new Error("Dropbox permission denied for this file.");
+    if (response.status === 409) throw new Error(`Dropbox file is missing or moved: ${locator}`);
+    if (!response.ok) throw new Error(`Dropbox temporary preview link failed: ${response.status}`);
+    const data = await response.json();
+    if (!data || !data.link) throw new Error("Dropbox did not return a preview link.");
+    return data.link;
+  }
+
   async function downloadFirst(locators) {
     let lastError = null;
     for (const locator of unique(locators)) {
       try {
         return await dropboxDownload(locator);
+      } catch (err) {
+        lastError = err;
+        if (!/missing|moved|not_found|lookup/i.test(String(err.message || ""))) throw err;
+      }
+    }
+    throw lastError || new Error("No Dropbox locator is available for this record.");
+  }
+
+  async function temporaryLinkFirst(locators) {
+    let lastError = null;
+    for (const locator of unique(locators)) {
+      try {
+        return await dropboxTemporaryLink(locator);
       } catch (err) {
         lastError = err;
         if (!/missing|moved|not_found|lookup/i.test(String(err.message || ""))) throw err;
@@ -188,6 +225,39 @@
     }
   }
 
+  function renderStreamPreview(url, record) {
+    const preview = $("preview");
+    const ext = fileExtension(record);
+    preview.innerHTML = "";
+    if (pdfExts.includes(ext)) {
+      const shell = document.createElement("div");
+      shell.className = "preview-pdf";
+      const frame = document.createElement("iframe");
+      frame.title = record.filename;
+      frame.src = url;
+      const open = document.createElement("a");
+      open.className = "preview-open";
+      open.href = url;
+      open.target = "_blank";
+      open.rel = "noopener";
+      open.textContent = "Open PDF";
+      shell.append(frame, open);
+      preview.appendChild(shell);
+    } else if (audioExts.includes(ext)) {
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.preload = "metadata";
+      audio.src = url;
+      preview.appendChild(audio);
+    } else if (videoExts.includes(ext)) {
+      const video = document.createElement("video");
+      video.controls = true;
+      video.preload = "metadata";
+      video.src = url;
+      preview.appendChild(video);
+    }
+  }
+
   async function previewActiveRecord(options = {}) {
     const status = $("evidence-status");
     const preview = $("preview");
@@ -219,6 +289,13 @@
 
       status.textContent = isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : "Loading evidence preview from Dropbox...";
       const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
+      if (options.force && isStreamPreviewRecord(record)) {
+        const link = await temporaryLinkFirst(locators);
+        if (key !== selectedKey()) return;
+        renderStreamPreview(link, record);
+        status.textContent = "Evidence preview loaded from Dropbox. No file was saved to this device.";
+        return;
+      }
       const response = await downloadFirst(locators);
       const blob = previewBlob(await response.blob(), record);
       activePreviewUrl = URL.createObjectURL(blob);

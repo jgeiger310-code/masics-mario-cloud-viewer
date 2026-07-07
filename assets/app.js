@@ -523,6 +523,29 @@
     return response;
   }
 
+  async function dropboxTemporaryLink(pathOrId) {
+    const response = await fetchWithRetry(DROPBOX_RPC + "files/get_temporary_link", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ path: pathOrId })
+    });
+    if (response.status === 401) throw new Error("Dropbox authentication expired. Sign in again.");
+    if (response.status === 403) throw new Error("Dropbox permission denied for this file.");
+    if (response.status === 409) {
+      let detail = "";
+      try { detail = await response.text(); } catch {}
+      const suffix = detail ? ` (${detail.slice(0, 240)})` : "";
+      throw new Error(`Dropbox file is missing or moved: ${pathOrId}${suffix}`);
+    }
+    if (!response.ok) throw new Error(`Dropbox temporary preview link failed: ${response.status}`);
+    const data = await response.json();
+    if (!data || !data.link) throw new Error("Dropbox did not return a preview link.");
+    return data.link;
+  }
+
   async function dropboxUpload(path, text, mode = "overwrite") {
     const response = await fetchWithRetry(DROPBOX_CONTENT + "files/upload", {
       method: "POST",
@@ -555,6 +578,19 @@
     for (const locator of uniqueLocators(locators)) {
       try {
         return await dropboxDownload(locator);
+      } catch (err) {
+        lastError = err;
+        if (!isLookupError(err)) throw err;
+      }
+    }
+    throw lastError || new Error("No Dropbox locator is available.");
+  }
+
+  async function temporaryLinkFirst(locators) {
+    let lastError = null;
+    for (const locator of uniqueLocators(locators)) {
+      try {
+        return await dropboxTemporaryLink(locator);
       } catch (err) {
         lastError = err;
         if (!isLookupError(err)) throw err;
@@ -731,6 +767,12 @@
       const locators = uniqueLocators([active.dropbox_file_id, active.dropbox_path, active.dropbox_path_alternates || []]);
       const locator = await metadataFirst(locators);
       els.evidenceStatus.textContent = "Loading evidence preview...";
+      if (isStreamPreviewRecord(active)) {
+        const link = await temporaryLinkFirst([locator, locators]);
+        renderStreamPreview(link, active);
+        els.evidenceStatus.textContent = "Evidence preview loaded from Dropbox. No file was saved to this device.";
+        return;
+      }
       const response = await dropboxDownload(locator);
       const blob = previewBlob(await response.blob(), active);
       activeObjectUrl = URL.createObjectURL(blob);
@@ -786,6 +828,38 @@
     }
   }
 
+  function renderStreamPreview(url, record) {
+    const ext = fileExtension(record);
+    els.preview.innerHTML = "";
+    if (ext === ".pdf") {
+      const shell = document.createElement("div");
+      shell.className = "preview-pdf";
+      const frame = document.createElement("iframe");
+      frame.src = url;
+      frame.title = record.filename;
+      const open = document.createElement("a");
+      open.className = "preview-open";
+      open.href = url;
+      open.target = "_blank";
+      open.rel = "noopener";
+      open.textContent = "Open PDF";
+      shell.append(frame, open);
+      els.preview.appendChild(shell);
+    } else if ([".mp3", ".wav", ".m4a", ".aac", ".ogg"].includes(ext)) {
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.preload = "metadata";
+      audio.src = url;
+      els.preview.appendChild(audio);
+    } else if ([".mp4", ".mov", ".m4v", ".webm"].includes(ext)) {
+      const video = document.createElement("video");
+      video.controls = true;
+      video.preload = "metadata";
+      video.src = url;
+      els.preview.appendChild(video);
+    }
+  }
+
   function fileExtension(record) {
     const fromExtension = String(record.extension || "").trim().toLowerCase();
     if (fromExtension) return fromExtension.startsWith(".") ? fromExtension : `.${fromExtension}`;
@@ -800,6 +874,11 @@
     const type = previewTypes[ext] || blob.type || "application/octet-stream";
     if (blob.type === type) return blob;
     return new Blob([blob], { type });
+  }
+
+  function isStreamPreviewRecord(record) {
+    const ext = fileExtension(record);
+    return ext === ".pdf" || [".mp3", ".wav", ".m4a", ".aac", ".ogg"].includes(ext) || [".mp4", ".mov", ".m4v", ".webm"].includes(ext);
   }
 
   function taggedRows(progress) {
