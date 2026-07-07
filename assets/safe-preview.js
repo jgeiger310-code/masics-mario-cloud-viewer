@@ -67,12 +67,20 @@
     return imageExts.includes(fileExtension(record));
   }
 
+  function isPdfRecord(record) {
+    return pdfExts.includes(fileExtension(record));
+  }
+
   function isAudioRecord(record) {
     return audioExts.includes(fileExtension(record));
   }
 
   function isVideoRecord(record) {
     return videoExts.includes(fileExtension(record));
+  }
+
+  function isAutoPreviewRecord(record) {
+    return isImageRecord(record) || isPdfRecord(record) || isAudioRecord(record) || isVideoRecord(record);
   }
 
   function previewBlob(blob, record) {
@@ -97,42 +105,11 @@
     return response;
   }
 
-  async function dropboxTemporaryLink(locator) {
-    const response = await fetch(DROPBOX_RPC + "files/get_temporary_link", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token()}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ path: locator })
-    });
-    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign in again.");
-    if (response.status === 403) throw new Error("Dropbox permission denied for this file.");
-    if (response.status === 409) throw new Error(`Dropbox file is missing or moved: ${locator}`);
-    if (!response.ok) throw new Error(`Dropbox temporary preview link failed: ${response.status}`);
-    const data = await response.json();
-    if (!data || !data.link) throw new Error("Dropbox did not return a preview link.");
-    return data.link;
-  }
-
   async function downloadFirst(locators) {
     let lastError = null;
     for (const locator of unique(locators)) {
       try {
         return await dropboxDownload(locator);
-      } catch (err) {
-        lastError = err;
-        if (!/missing|moved|not_found|lookup/i.test(String(err.message || ""))) throw err;
-      }
-    }
-    throw lastError || new Error("No Dropbox locator is available for this record.");
-  }
-
-  async function temporaryLinkFirst(locators) {
-    let lastError = null;
-    for (const locator of unique(locators)) {
-      try {
-        return await dropboxTemporaryLink(locator);
       } catch (err) {
         lastError = err;
         if (!/missing|moved|not_found|lookup/i.test(String(err.message || ""))) throw err;
@@ -177,7 +154,7 @@
     const preview = $("preview");
     const message = document.createElement("p");
     message.className = "preview-message";
-    message.textContent = `${record.filename} is not auto-previewed. Press Preview Evidence to load PDF/media safely from Dropbox.`;
+    message.textContent = `${record.filename} is not auto-previewed. Press Preview Evidence to load it safely from Dropbox.`;
     preview.appendChild(message);
   }
 
@@ -229,16 +206,6 @@
     }
   }
 
-  function renderTemporaryLinkPreview(url, record) {
-    const preview = $("preview");
-    preview.innerHTML = "";
-    if (isAudioRecord(record)) {
-      preview.appendChild(renderMediaElement("audio", url, record));
-    } else if (isVideoRecord(record)) {
-      preview.appendChild(renderMediaElement("video", url, record));
-    }
-  }
-
   async function previewActiveRecord(options = {}) {
     const status = $("evidence-status");
     const preview = $("preview");
@@ -262,9 +229,9 @@
       const record = activeRecordFrom(allRecords);
       if (!record) throw new Error("No active record is selected.");
 
-      if (!options.force && !isImageRecord(record)) {
+      if (!options.force && !isAutoPreviewRecord(record)) {
         showNoDownloadMessage(record);
-        status.textContent = "PDF/media preview waits for Preview Evidence. No file was downloaded.";
+        status.textContent = "Preview waits for Preview Evidence. No file was downloaded.";
         return;
       }
 
