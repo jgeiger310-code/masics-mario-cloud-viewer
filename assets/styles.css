@@ -54,12 +54,17 @@ p { margin: 0; }
 .tracker-summary { align-self: center; color: #586270; font-size: 13px; padding: 7px 2px; }
 #export-tagged-csv { border-color: #2f855a; color: #1f6f45; font-weight: 700; }
 #export-audit-json { border-color: #6b7280; color: #374151; }
-.preview { margin-top: 6px; margin-bottom: 8px; min-height: 320px; max-height: min(700px, calc(100vh - 260px)); background: #fff; border: 1px solid #d7dbe0; border-radius: 6px; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 8px; }
+.preview { margin-top: 6px; margin-bottom: 8px; min-height: 320px; max-height: min(700px, calc(100vh - 260px)); background: #fff; border: 1px solid #d7dbe0; border-radius: 6px; overflow: auto; display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: center; padding: 8px; }
 .preview img { display: block; width: auto; height: auto; max-width: 100%; max-height: min(660px, calc(100vh - 300px)); object-fit: contain; background: #fff; }
 .preview iframe, .preview video { display: block; width: 100%; min-height: 520px; border: 0; object-fit: contain; background: #fff; }
 .preview-pdf { width: 100%; align-self: stretch; display: grid; grid-template-rows: minmax(420px, 1fr) auto; gap: 8px; }
 .preview-pdf iframe { min-height: 560px; }
 .preview-open { justify-self: start; color: #005bd3; font-weight: 700; text-decoration: none; border: 1px solid #9bbcf3; border-radius: 6px; padding: 6px 9px; background: #f6f9ff; }
+.preview-file-actions { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-start; }
+.preview-docx { width: 100%; align-self: stretch; padding: 18px 22px; color: #20242a; background: #fff; overflow-wrap: anywhere; }
+.preview-docx img { max-width: 100%; height: auto; }
+.preview-docx table { max-width: 100%; border-collapse: collapse; }
+.preview-docx td, .preview-docx th { border: 1px solid #c8cdd4; padding: 5px; vertical-align: top; }
 .preview audio { width: 100%; margin: 18px; }
 .preview pre { margin: 0; padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; align-self: stretch; width: 100%; }
 .preview-message { padding: 18px; color: #586270; text-align: center; }

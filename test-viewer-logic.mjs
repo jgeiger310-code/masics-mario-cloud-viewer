@@ -47,9 +47,10 @@ const trackerReport = read("assets/tracker-report.js");
 test("live page references current performance asset versions", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260707-4/);
-  assert.match(html, /assets\/styles\.css\?v=20260707-9/);
+  assert.match(html, /assets\/styles\.css\?v=20260708-10/);
   assert.match(html, /assets\/app\.js\?v=20260707-23/);
-  assert.match(html, /assets\/safe-preview\.js\?v=20260707-22/);
+  assert.match(html, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/);
+  assert.match(html, /assets\/safe-preview\.js\?v=20260708-25/);
   assert.match(html, /assets\/save-online-merge\.js\?v=20260707-12/);
 });
 
@@ -98,23 +99,33 @@ test("preview no longer uses base64 FileReader path", () => {
   assert.match(preview, /URL\.revokeObjectURL\(activePreviewUrl\)/);
 });
 
-test("manual safe preview supports media while auto preview stays image-light", () => {
+test("safe preview supports auto media and Android PDF rendering", () => {
   assert.match(preview, /const audioExts = \["\.mp3", "\.wav", "\.m4a", "\.aac", "\.ogg"\]/);
   assert.match(preview, /const videoExts = \["\.mp4", "\.mov", "\.m4v", "\.webm"\]/);
   assert.match(preview, /const pdfExts = \["\.pdf"\]/);
   assert.match(preview, /function previewBlob/);
-  assert.match(preview, /function dropboxTemporaryLink/);
-  assert.match(preview, /files\/get_temporary_link/);
-  assert.match(preview, /function renderStreamPreview/);
-  assert.match(preview, /isStreamPreviewRecord\(record\)/);
-  assert.match(preview, /return audioExts\.includes\(ext\) \|\| videoExts\.includes\(ext\)/);
+  assert.match(preview, /function isAutoPreviewRecord/);
+  assert.match(preview, /function renderMediaElement/);
+  assert.match(preview, /function renderPdfPreview/);
+  assert.match(preview, /PDFJS_MODULE_URL/);
   assert.match(preview, /"\.pdf": "application\/pdf"/);
   assert.match(preview, /function renderPreview/);
-  assert.match(preview, /document\.createElement\("audio"\)/);
-  assert.match(preview, /document\.createElement\("video"\)/);
+  assert.match(preview, /renderMediaElement\("audio"/);
+  assert.match(preview, /renderMediaElement\("video"/);
   assert.match(preview, /document\.createElement\("iframe"\)/);
   assert.match(preview, /Open PDF/);
-  assert.match(preview, /if \(!options\.force && !isImageRecord\(record\)\)/);
+  assert.match(preview, /if \(!options\.force && !isAutoPreviewRecord\(record\)\)/);
+});
+
+test("DOCX is rendered locally and every unsupported format keeps open and save controls", () => {
+  assert.match(preview, /const docxExts = \["\.docx"\]/);
+  assert.match(preview, /window\.mammoth\.convertToHtml/);
+  assert.match(preview, /function sanitizeDocxHtml/);
+  assert.match(preview, /script, style, iframe, object, embed, form/);
+  assert.match(preview, /function appendFileActions/);
+  assert.match(preview, /Open original/);
+  assert.match(preview, /Save a copy/);
+  assert.match(preview, /await renderPreview\(blob, activePreviewUrl, record, key\)/);
 });
 
 test("queue update avoids full list rebuild in normal note typing path", () => {

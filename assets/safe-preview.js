@@ -11,6 +11,9 @@
   const audioExts = [".mp3", ".wav", ".m4a", ".aac", ".ogg"];
   const videoExts = [".mp4", ".mov", ".m4v", ".webm"];
   const textExts = [".txt", ".csv", ".json", ".md"];
+  const docxExts = [".docx"];
+  const officeExts = [".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".odt", ".ods", ".odp", ".rtf"];
+  const maxDocxPreviewBytes = 50 * 1024 * 1024;
   const previewTypes = {
     ".pdf": "application/pdf",
     ".jpg": "image/jpeg",
@@ -166,6 +169,64 @@
     preview.appendChild(message);
   }
 
+  function appendFileActions(container, url, record, openLabel = "Open original") {
+    const actions = document.createElement("div");
+    actions.className = "preview-file-actions";
+    const open = document.createElement("a");
+    open.className = "preview-open";
+    open.href = url;
+    open.target = "_blank";
+    open.rel = "noopener";
+    open.textContent = openLabel;
+    const save = document.createElement("a");
+    save.className = "preview-open";
+    save.href = url;
+    save.download = record.filename || "evidence-file";
+    save.textContent = "Save a copy";
+    actions.append(open, save);
+    container.appendChild(actions);
+  }
+
+  function sanitizeDocxHtml(html) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    template.content.querySelectorAll("script, style, iframe, object, embed, form").forEach((node) => node.remove());
+    template.content.querySelectorAll("*").forEach((node) => {
+      for (const attr of [...node.attributes]) {
+        const name = attr.name.toLowerCase();
+        const value = attr.value.trim().toLowerCase();
+        if (name.startsWith("on") || name === "srcdoc" || ((name === "href" || name === "src") && value.startsWith("javascript:"))) {
+          node.removeAttribute(attr.name);
+        }
+      }
+      if (node.tagName === "A") {
+        node.target = "_blank";
+        node.rel = "noopener noreferrer";
+      }
+    });
+    return template.content;
+  }
+
+  async function renderDocxPreview(blob, url, record, preview) {
+    if (!window.mammoth || typeof window.mammoth.convertToHtml !== "function") {
+      throw new Error("The DOCX preview component did not load.");
+    }
+    if (blob.size > maxDocxPreviewBytes) {
+      const message = document.createElement("p");
+      message.className = "preview-message";
+      message.textContent = "This DOCX is too large for a safe in-page preview. Open the original file instead.";
+      preview.appendChild(message);
+      appendFileActions(preview, url, record);
+      return;
+    }
+    const result = await window.mammoth.convertToHtml({ arrayBuffer: await blob.arrayBuffer() });
+    const article = document.createElement("article");
+    article.className = "preview-docx";
+    article.appendChild(sanitizeDocxHtml(result.value));
+    preview.appendChild(article);
+    appendFileActions(preview, url, record);
+  }
+
   function renderMediaElement(tagName, url, record) {
     const media = document.createElement(tagName);
     media.controls = true;
@@ -196,6 +257,7 @@
     frame.title = record.filename;
     frame.src = url;
     shell.appendChild(frame);
+    appendFileActions(shell, url, record, "Open PDF");
     return shell;
   }
 
@@ -292,25 +354,35 @@
     if (blob.type === "application/pdf" || pdfExts.includes(ext)) {
       return await renderPdfPreview(blob, url, record, expectedKey);
     }
+    if (docxExts.includes(ext)) {
+      await renderDocxPreview(blob, url, record, preview);
+      return { statusMessage: "DOCX preview loaded in-page. No file was saved to this device." };
+    }
     if (blob.type.startsWith("audio/") || isAudioRecord(record)) {
       preview.appendChild(renderMediaElement("audio", url, record));
+      appendFileActions(preview, url, record, "Open audio");
       return { statusMessage: "Media preview loaded in-page. No file was downloaded." };
     }
     if (blob.type.startsWith("video/") || isVideoRecord(record)) {
       preview.appendChild(renderMediaElement("video", url, record));
+      appendFileActions(preview, url, record, "Open video");
       return { statusMessage: "Media preview loaded in-page. No file was downloaded." };
     }
     if (blob.type.startsWith("text/") || textExts.includes(ext)) {
       const pre = document.createElement("pre");
       pre.textContent = (await blob.text()).slice(0, 200000);
       preview.appendChild(pre);
+      appendFileActions(preview, url, record, "Open text file");
       return { statusMessage: "Text preview loaded in-page. No file was downloaded." };
     }
     const message = document.createElement("p");
     message.className = "preview-message";
-    message.textContent = "Preview is unavailable for this file type. No file was downloaded.";
+    message.textContent = officeExts.includes(ext)
+      ? "This browser cannot display this Office format in-page. Open the original file in its installed app."
+      : "This format cannot be displayed in-page. The original file is still available.";
     preview.appendChild(message);
-    return { statusMessage: "Preview is unavailable for this file type. No file was downloaded." };
+    appendFileActions(preview, url, record);
+    return { statusMessage: "Use Open original or Save a copy for this file type." };
   }
 
   async function previewActiveRecord(options = {}) {
