@@ -3,6 +3,9 @@
 
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
+  const PDFJS_DIST_VERSION = "6.1.200";
+  const PDFJS_MODULE_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_DIST_VERSION}/legacy/build/pdf.mjs`;
+  const PDFJS_WORKER_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_DIST_VERSION}/legacy/build/pdf.worker.mjs`;
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
   const pdfExts = [".pdf"];
   const audioExts = [".mp3", ".wav", ".m4a", ".aac", ".ogg"];
@@ -36,6 +39,7 @@
   let previewInFlight = false;
   let previewQueued = false;
   let activePreviewUrl = "";
+  let pdfJsPromise = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -81,6 +85,10 @@
 
   function isAutoPreviewRecord(record) {
     return isImageRecord(record) || isPdfRecord(record) || isAudioRecord(record) || isVideoRecord(record);
+  }
+
+  function isAndroidBrowser() {
+    return /Android/i.test(navigator.userAgent || "");
   }
 
   function previewBlob(blob, record) {
@@ -171,7 +179,106 @@
     return media;
   }
 
-  function renderPreview(blob, url, record) {
+  async function loadPdfJs() {
+    if (!pdfJsPromise) {
+      pdfJsPromise = import(PDFJS_MODULE_URL).then((pdfjsLib) => {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+        return pdfjsLib;
+      });
+    }
+    return pdfJsPromise;
+  }
+
+  function renderNativePdfFallback(url, record) {
+    const shell = document.createElement("div");
+    shell.className = "preview-pdf";
+    const frame = document.createElement("iframe");
+    frame.title = record.filename;
+    frame.src = url;
+    shell.appendChild(frame);
+    return shell;
+  }
+
+  function pdfCanvasWidth() {
+    const preview = $("preview");
+    const available = (preview && preview.clientWidth ? preview.clientWidth : window.innerWidth) - 42;
+    return Math.max(280, Math.min(available, 980));
+  }
+
+  async function renderPdfPage(page, pages, pageNumber) {
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = Math.max(0.45, Math.min(2.2, pdfCanvasWidth() / baseViewport.width));
+    const viewport = page.getViewport({ scale });
+    const outputScale = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+
+    const pageShell = document.createElement("section");
+    pageShell.className = "pdf-page";
+    pageShell.setAttribute("aria-label", `PDF page ${pageNumber}`);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.floor(viewport.width * outputScale);
+    canvas.height = Math.floor(viewport.height * outputScale);
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+    const caption = document.createElement("div");
+    caption.className = "pdf-page-caption";
+    caption.textContent = `Page ${pageNumber}`;
+
+    pageShell.appendChild(canvas);
+    pageShell.appendChild(caption);
+    pages.appendChild(pageShell);
+
+    const canvasContext = canvas.getContext("2d", { alpha: false });
+    const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+    await page.render({ canvasContext, viewport, transform }).promise;
+  }
+
+  async function renderPdfPreview(blob, url, record, expectedKey) {
+    const preview = $("preview");
+    const shell = document.createElement("div");
+    shell.className = "preview-pdf preview-pdf-canvas";
+
+    const note = document.createElement("p");
+    note.className = "pdf-render-note";
+    note.textContent = "Rendering PDF in this page for Android-compatible viewing...";
+
+    const pages = document.createElement("div");
+    pages.className = "pdf-pages";
+
+    shell.appendChild(note);
+    shell.appendChild(pages);
+    preview.appendChild(shell);
+
+    try {
+      const pdfjsLib = await loadPdfJs();
+      const data = new Uint8Array(await blob.arrayBuffer());
+      const task = pdfjsLib.getDocument({ data, isEvalSupported: false, useWorkerFetch: false });
+      const pdf = await task.promise;
+      if (expectedKey && selectedKey() !== expectedKey) return { statusMessage: "Preview changed before PDF finished rendering." };
+
+      note.textContent = `${record.filename} rendered in-page (${pdf.numPages} page${pdf.numPages === 1 ? "" : "s"}). No file was downloaded.`;
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        if (expectedKey && selectedKey() !== expectedKey) break;
+        const page = await pdf.getPage(pageNumber);
+        await renderPdfPage(page, pages, pageNumber);
+      }
+      return { statusMessage: "PDF preview rendered in-page. No file was downloaded." };
+    } catch (err) {
+      shell.innerHTML = "";
+      if (!isAndroidBrowser() && url) {
+        preview.appendChild(renderNativePdfFallback(url, record));
+        return { statusMessage: "PDF.js renderer failed, so desktop browser PDF fallback was used. No file was downloaded." };
+      }
+      const message = document.createElement("p");
+      message.className = "preview-message";
+      message.textContent = "Android-safe PDF preview could not load. Reload the fresh viewer link and try Preview Evidence again.";
+      shell.appendChild(message);
+      throw err;
+    }
+  }
+
+  async function renderPreview(blob, url, record, expectedKey) {
     const preview = $("preview");
     const ext = fileExtension(record);
     preview.innerHTML = "";
@@ -180,30 +287,30 @@
       img.alt = record.filename;
       img.src = url;
       preview.appendChild(img);
-    } else if (blob.type === "application/pdf" || pdfExts.includes(ext)) {
-      const shell = document.createElement("div");
-      shell.className = "preview-pdf";
-      const frame = document.createElement("iframe");
-      frame.title = record.filename;
-      frame.src = url;
-      shell.appendChild(frame);
-      preview.appendChild(shell);
-    } else if (blob.type.startsWith("audio/") || isAudioRecord(record)) {
-      preview.appendChild(renderMediaElement("audio", url, record));
-    } else if (blob.type.startsWith("video/") || isVideoRecord(record)) {
-      preview.appendChild(renderMediaElement("video", url, record));
-    } else if (blob.type.startsWith("text/") || textExts.includes(ext)) {
-      blob.text().then((text) => {
-        const pre = document.createElement("pre");
-        pre.textContent = text.slice(0, 200000);
-        preview.appendChild(pre);
-      });
-    } else {
-      const message = document.createElement("p");
-      message.className = "preview-message";
-      message.textContent = "Preview is unavailable for this file type. No file was downloaded.";
-      preview.appendChild(message);
+      return { statusMessage: "Image preview loaded in-page. No file was downloaded." };
     }
+    if (blob.type === "application/pdf" || pdfExts.includes(ext)) {
+      return await renderPdfPreview(blob, url, record, expectedKey);
+    }
+    if (blob.type.startsWith("audio/") || isAudioRecord(record)) {
+      preview.appendChild(renderMediaElement("audio", url, record));
+      return { statusMessage: "Media preview loaded in-page. No file was downloaded." };
+    }
+    if (blob.type.startsWith("video/") || isVideoRecord(record)) {
+      preview.appendChild(renderMediaElement("video", url, record));
+      return { statusMessage: "Media preview loaded in-page. No file was downloaded." };
+    }
+    if (blob.type.startsWith("text/") || textExts.includes(ext)) {
+      const pre = document.createElement("pre");
+      pre.textContent = (await blob.text()).slice(0, 200000);
+      preview.appendChild(pre);
+      return { statusMessage: "Text preview loaded in-page. No file was downloaded." };
+    }
+    const message = document.createElement("p");
+    message.className = "preview-message";
+    message.textContent = "Preview is unavailable for this file type. No file was downloaded.";
+    preview.appendChild(message);
+    return { statusMessage: "Preview is unavailable for this file type. No file was downloaded." };
   }
 
   async function previewActiveRecord(options = {}) {
@@ -241,14 +348,9 @@
       const blob = previewBlob(await response.blob(), record);
       activePreviewUrl = URL.createObjectURL(blob);
       if (key !== selectedKey()) return;
-      renderPreview(blob, activePreviewUrl, record);
-      if (isImageRecord(record)) {
-        status.textContent = "Image preview loaded in-page. No file was downloaded.";
-      } else if (isAudioRecord(record) || isVideoRecord(record)) {
-        status.textContent = "Media preview loaded in-page. No file was downloaded.";
-      } else {
-        status.textContent = "Evidence preview loaded in-page. No file was downloaded.";
-      }
+      const result = await renderPreview(blob, activePreviewUrl, record, key);
+      if (key !== selectedKey()) return;
+      status.textContent = result?.statusMessage || "Evidence preview loaded in-page. No file was downloaded.";
     } catch (err) {
       lastPreviewKey = "";
       if (err.name !== "AbortError") status.textContent = err.message || "Unable to load evidence preview.";
