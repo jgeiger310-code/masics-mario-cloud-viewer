@@ -3,40 +3,27 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const version = "20260709-save-throttle-1";
-  let autoSaveTimer = 0;
-  let autoSaveInFlight = false;
-  let autoSaveQueued = false;
+  const VERSION = "20260709-visible-record-save-1";
+  let timer = 0;
+  let inFlight = false;
+  let queued = false;
 
-  window.MASICS_ONLINE_SAVE_MERGE_VERSION = version;
+  window.MASICS_ONLINE_SAVE_MERGE_VERSION = VERSION;
 
-  function cfg() {
-    return window.MASICS_DROPBOX_CONFIG || {};
-  }
-
-  function token() {
-    return window.sessionStorage.getItem("masics_access_token") || "";
-  }
-
-  function progressKey() {
-    return `masics_cloud_progress:${cfg().queueIdentity}`;
-  }
-
-  function stampKey(name) {
-    return `${progressKey()}:${name}`;
-  }
-
-  function saveStatus() {
-    return document.getElementById("save-status");
-  }
+  const cfg = () => window.MASICS_DROPBOX_CONFIG || {};
+  const token = () => window.sessionStorage.getItem("masics_access_token") || "";
+  const $ = (id) => document.getElementById(id);
+  const text = (id) => String($(id)?.textContent || "").trim();
+  const progressKey = () => `masics_cloud_progress:${cfg().queueIdentity}`;
+  const stampKey = (name) => `${progressKey()}:${name}`;
 
   function setSaveStatus(message) {
-    const el = saveStatus();
+    const el = $("save-status");
     if (el) el.textContent = message;
   }
 
   function setTopStatus(message) {
-    const el = document.getElementById("status-line");
+    const el = $("status-line");
     if (el) el.textContent = message;
   }
 
@@ -44,163 +31,21 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
-  function isTransientFetchError(err) {
+  function isTransient(err) {
     return /Failed to fetch|NetworkError|Load failed/i.test(String(err && err.message || err || ""));
   }
 
   async function fetchWithRetry(url, options) {
-    let lastError = null;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        return await fetch(url, options);
-      } catch (err) {
-        lastError = err;
-        if (!isTransientFetchError(err)) throw err;
-        await delay(600 * (attempt + 1));
+    let last = null;
+    for (let i = 0; i < 3; i += 1) {
+      try { return await fetch(url, options); }
+      catch (err) {
+        last = err;
+        if (!isTransient(err)) throw err;
+        await delay(600 * (i + 1));
       }
     }
-    throw lastError || new Error("Dropbox request failed before it could start.");
-  }
-
-  function progressFolder() {
-    return String(cfg().progressDropboxFolder || "").replace(/\/+$/g, "");
-  }
-
-  function progressFolders() {
-    const folders = [cfg().progressDropboxFolder, cfg().progressDropboxFolderAlternates || []];
-    return unique(folders).map((folder) => folder.replace(/\/+$/g, ""));
-  }
-
-  function loadLocalProgress() {
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem(progressKey()) || "{}");
-      return parsed && typeof parsed === "object" ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-
-  function saveLocalProgress(progress) {
-    window.localStorage.setItem(progressKey(), JSON.stringify(progress));
-  }
-
-  function updatedAt(value) {
-    const time = Date.parse(value || "");
-    return Number.isFinite(time) ? time : 0;
-  }
-
-  function hasReviewValue(value) {
-    return Boolean(value && (String(value.decision || "") || String(value.notes || "")));
-  }
-
-  function shouldReplaceDecision(current, candidate) {
-    if (String(current?.decision || "") === "delete" && String(candidate?.decision || "") !== "delete") return false;
-    if (String(current?.decision || "") && !String(candidate?.decision || "")) return false;
-    const currentHasValue = hasReviewValue(current);
-    const candidateHasValue = hasReviewValue(candidate);
-    if (currentHasValue && !candidateHasValue) return false;
-    if (!currentHasValue && candidateHasValue) return true;
-    return updatedAt(candidate?.updatedAt) >= updatedAt(current?.updatedAt);
-  }
-
-  function mergeDecisions(onlineDecisions, localDecisions) {
-    const merged = { ...(onlineDecisions || {}) };
-    Object.entries(localDecisions || {}).forEach(([reviewId, local]) => {
-      const current = merged[reviewId] || {};
-      if (shouldReplaceDecision(current, local)) merged[reviewId] = local;
-    });
-    return merged;
-  }
-
-  function summarizeDecision(value) {
-    return {
-      hasValue: hasReviewValue(value),
-      decision: String(value?.decision || ""),
-      hasNotes: Boolean(String(value?.notes || "")),
-      noteLength: String(value?.notes || "").length,
-      updatedAt: String(value?.updatedAt || "")
-    };
-  }
-
-  function sameSummary(left, right) {
-    return JSON.stringify(left) === JSON.stringify(right);
-  }
-
-  function buildAudit(records, online, localProgress, mergedDecisions, exportedAt) {
-    const knownIds = new Set(records.map((record) => record.review_id));
-    const ids = new Set([
-      ...Object.keys(online?.decisions || {}),
-      ...Object.keys(localProgress?.decisions || {}),
-      ...Object.keys(mergedDecisions || {})
-    ]);
-    const changed = [];
-    const preservedFromOnline = [];
-    const adoptedFromLocal = [];
-    const ignoredUnknownLocalIds = [];
-
-    ids.forEach((reviewId) => {
-      const onlineValue = online?.decisions?.[reviewId];
-      const localValue = localProgress?.decisions?.[reviewId];
-      const mergedValue = mergedDecisions?.[reviewId];
-      if (!knownIds.has(reviewId)) {
-        if (localValue) ignoredUnknownLocalIds.push(reviewId);
-        return;
-      }
-      const onlineSummary = summarizeDecision(onlineValue);
-      const localSummary = summarizeDecision(localValue);
-      const mergedSummary = summarizeDecision(mergedValue);
-      if (hasReviewValue(onlineValue) && localValue && !shouldReplaceDecision(onlineValue, localValue) && sameSummary(mergedSummary, onlineSummary)) {
-        preservedFromOnline.push({ reviewId, online: onlineSummary, local: localSummary });
-      }
-      if (hasReviewValue(localValue) && shouldReplaceDecision(onlineValue || {}, localValue) && sameSummary(mergedSummary, localSummary) && !sameSummary(onlineSummary, localSummary)) {
-        adoptedFromLocal.push({ reviewId, online: onlineSummary, local: localSummary });
-      }
-      if (!sameSummary(onlineSummary, mergedSummary)) {
-        changed.push({ reviewId, before: onlineSummary, after: mergedSummary });
-      }
-    });
-
-    return {
-      schema: "MASICS_MARIO_REVIEW_SAVE_AUDIT_V1",
-      trackerVersion: version,
-      queueIdentity: cfg().queueIdentity,
-      queueVersion: cfg().queueVersion,
-      exportedAt,
-      previousOnlineExportedAt: online?.exportedAt || "",
-      source: "github-pages-cloud-viewer",
-      mergePolicy: "preserve existing online note/decision over blank local values; otherwise newest updatedAt wins",
-      totalKnownRecords: records.length || cfg().expectedRecordCount || 636,
-      onlineDecisionCount: Object.keys(online?.decisions || {}).length,
-      localDecisionCount: Object.keys(localProgress?.decisions || {}).length,
-      mergedDecisionCount: Object.keys(mergedDecisions || {}).length,
-      changedCount: changed.length,
-      preservedFromOnlineCount: preservedFromOnline.length,
-      adoptedFromLocalCount: adoptedFromLocal.length,
-      ignoredUnknownLocalCount: ignoredUnknownLocalIds.length,
-      changed,
-      preservedFromOnline,
-      adoptedFromLocal,
-      ignoredUnknownLocalIds
-    };
-  }
-
-  function normalizeDecision(value) {
-    const decision = String(value?.decision || "");
-    const allowedDecisions = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "duplicate", "delete"]);
-    return {
-      decision: allowedDecisions.has(decision) ? decision : "",
-      notes: String(value?.notes || ""),
-      updatedAt: String(value?.updatedAt || "")
-    };
-  }
-
-  function filterKnownDecisions(records, decisions) {
-    const knownIds = new Set(records.map((record) => record.review_id));
-    const filtered = {};
-    Object.entries(decisions || {}).forEach(([reviewId, value]) => {
-      if (knownIds.has(reviewId) && value && typeof value === "object" && hasReviewValue(value)) filtered[reviewId] = normalizeDecision(value);
-    });
-    return filtered;
+    throw last || new Error("Dropbox request failed before it could start.");
   }
 
   function unique(values) {
@@ -212,107 +57,139 @@
     });
   }
 
-  async function dropboxDownload(locator) {
-    const response = await fetchWithRetry(DROPBOX_CONTENT + "files/download", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token()}`,
-        "Dropbox-API-Arg": JSON.stringify({ path: locator })
-      }
-    });
-    if (response.status === 409 || response.status === 404) return null;
-    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign out, sign in again, then press Save Online.");
-    if (response.status === 403) throw new Error("Dropbox permission denied while reading online tracker.");
-    if (!response.ok) throw new Error(`Dropbox read failed: ${response.status}`);
-    return response;
+  function baseFolder() {
+    return String(cfg().progressDropboxFolder || "").replace(/\/+$/g, "");
   }
 
-  async function dropboxRpc(endpoint, body) {
-    const response = await fetchWithRetry(DROPBOX_RPC + endpoint, {
+  async function rpc(endpoint, body) {
+    const res = await fetchWithRetry(DROPBOX_RPC + endpoint, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token()}`,
-        "Content-Type": "application/json"
-      },
+      headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
       body: JSON.stringify(body || {})
     });
-    if (response.status === 409 || response.status === 404) return null;
-    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign out, sign in again, then press Save Online.");
-    if (response.status === 403) throw new Error("Dropbox permission denied while resolving the online tracker folder.");
-    if (!response.ok) throw new Error(`Dropbox metadata lookup failed: ${response.status}`);
-    return response.json();
+    if (res.status === 409 || res.status === 404) return null;
+    if (res.status === 401) throw new Error("Dropbox sign-in expired. Sign out and sign in again.");
+    if (res.status === 403) throw new Error("Dropbox permission denied for the tracker folder.");
+    if (!res.ok) throw new Error(`Dropbox metadata failed: ${res.status}`);
+    return res.json();
   }
 
-  async function dropboxUpload(path, text, mode = "overwrite") {
-    const response = await fetchWithRetry(DROPBOX_CONTENT + "files/upload", {
+  async function resolvedBase() {
+    if (cfg().progressDropboxFolderId) {
+      const meta = await rpc("files/get_metadata", { path: cfg().progressDropboxFolderId, include_deleted: false });
+      if (meta && meta.path_display) return String(meta.path_display).replace(/\/+$/g, "");
+    }
+    return baseFolder();
+  }
+
+  async function download(locator) {
+    const res = await fetchWithRetry(DROPBOX_CONTENT + "files/download", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token()}`, "Dropbox-API-Arg": JSON.stringify({ path: locator }) }
+    });
+    if (res.status === 409 || res.status === 404) return null;
+    if (res.status === 401) throw new Error("Dropbox sign-in expired. Sign out and sign in again.");
+    if (res.status === 403) throw new Error("Dropbox permission denied while reading tracker data.");
+    if (!res.ok) throw new Error(`Dropbox read failed: ${res.status}`);
+    return res;
+  }
+
+  async function upload(path, content, mode = "overwrite") {
+    const res = await fetchWithRetry(DROPBOX_CONTENT + "files/upload", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${token()}`,
+        Authorization: `Bearer ${token()}`,
         "Content-Type": "application/octet-stream",
-        "Dropbox-API-Arg": JSON.stringify({
-          path,
-          mode: { ".tag": mode },
-          autorename: false,
-          mute: true,
-          strict_conflict: false
-        })
+        "Dropbox-API-Arg": JSON.stringify({ path, mode: { ".tag": mode }, autorename: false, mute: true, strict_conflict: false })
       },
-      body: text
+      body: content
     });
-    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign out, sign in again, then press Save Online.");
-    if (response.status === 403) throw new Error("Dropbox did not allow online save. The app and shared folder need review-progress write permission.");
-    if (response.status === 409) throw new Error("Dropbox could not write the online tracker file. Check that Mario has edit access to the shared review folder.");
-    if (!response.ok) throw new Error(`Dropbox write failed: ${response.status}`);
-    return response.json();
+    if (res.status === 401) throw new Error("Dropbox sign-in expired. Sign out and sign in again.");
+    if (res.status === 403) throw new Error("Dropbox did not allow online save. Mario needs edit access to the review folder.");
+    if (res.status === 409) throw new Error("Dropbox could not write the tracker file. Check shared-folder edit permissions.");
+    if (!res.ok) throw new Error(`Dropbox write failed: ${res.status}`);
+    return res.json();
   }
 
-  async function loadManifestRecords() {
-    const config = cfg();
-    for (const locator of unique([config.manifestDropboxPath, config.manifestDropboxPathAlternates || []])) {
-      const response = await dropboxDownload(locator);
-      if (!response) continue;
-      const manifest = await response.json();
-      return Array.isArray(manifest.records) ? manifest.records : [];
+  async function loadManifest() {
+    for (const locator of unique([cfg().manifestDropboxPath, cfg().manifestDropboxPathAlternates || []])) {
+      const res = await download(locator);
+      if (!res) continue;
+      const json = await res.json();
+      return Array.isArray(json.records) ? json.records : [];
     }
-    return [];
+    throw new Error("Queue manifest could not be loaded from Dropbox.");
   }
 
-  async function loadOnlineProgress(base) {
+  async function loadOnline(base) {
     const locators = unique([
       cfg().progressDropboxLatestJsonId,
-      base ? `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json` : "",
-      progressFolders().map((folder) => `${folder}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`)
+      `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`,
+      (cfg().progressDropboxFolderAlternates || []).map((folder) => `${String(folder || "").replace(/\/+$/g, "")}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`)
     ]);
     for (const locator of locators) {
-      const response = await dropboxDownload(locator);
-      if (!response) continue;
-      try {
-        return await response.json();
-      } catch {
-        return null;
-      }
+      const res = await download(locator);
+      if (!res) continue;
+      try { return await res.json(); } catch { return null; }
     }
     return null;
   }
 
-  async function resolvedProgressFolder() {
-    if (cfg().progressDropboxFolderId) {
-      const metadata = await dropboxRpc("files/get_metadata", { path: cfg().progressDropboxFolderId, include_media_info: false, include_deleted: false });
-      if (metadata && metadata.path_display) return String(metadata.path_display).replace(/\/+$/g, "");
-    }
-    return progressFolder();
+  function localProgress() {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(progressKey()) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch { return {}; }
   }
 
-  function csvEscape(value) {
-    const text = String(value ?? "");
-    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  function saveLocal(progress) {
+    window.localStorage.setItem(progressKey(), JSON.stringify(progress));
+  }
+
+  function allowedDecision(value) {
+    const decision = String(value || "");
+    return new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "duplicate", "delete"]).has(decision) ? decision : "";
+  }
+
+  function currentRecord(records) {
+    const pos = text("record-position").match(/Record\s+(\d+)\s+of/i);
+    const num = pos ? Number(pos[1]) : 0;
+    const title = text("record-title");
+    if (num) {
+      const exact = records.find((r) => Number(r.queue_number) === num && (!title || r.filename === title));
+      if (exact) return exact;
+      const byNum = records.find((r) => Number(r.queue_number) === num);
+      if (byNum) return byNum;
+    }
+    return title ? records.find((r) => r.filename === title) || null : null;
+  }
+
+  function currentControls() {
+    return { decision: allowedDecision($("decision")?.value || ""), notes: String($("notes")?.value || "") };
+  }
+
+  function hasValue(value) {
+    return Boolean(value && (String(value.decision || "") || String(value.notes || "")));
+  }
+
+  function newerOrSafer(current, candidate) {
+    if (String(current?.decision || "") === "delete" && String(candidate?.decision || "") !== "delete") return current;
+    if (String(current?.decision || "") && !String(candidate?.decision || "")) return current;
+    if (hasValue(current) && !hasValue(candidate)) return current;
+    return candidate;
+  }
+
+  function mergeDecisions(online, local) {
+    const merged = { ...(online || {}) };
+    Object.entries(local || {}).forEach(([id, value]) => { merged[id] = newerOrSafer(merged[id] || {}, value); });
+    return merged;
   }
 
   function buildRows(records, decisions) {
     return records.map((record) => {
       const saved = decisions[record.review_id] || {};
-      const decision = saved.decision || "";
-      const notes = saved.notes || "";
+      const decision = allowedDecision(saved.decision || "");
+      const notes = String(saved.notes || "");
       return {
         queue_number: record.queue_number,
         filename: record.filename,
@@ -328,146 +205,180 @@
     });
   }
 
-  function buildCsv(rows) {
+  function csvEscape(value) {
+    const s = String(value ?? "");
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  function csv(rows) {
     const header = ["queue_number", "filename", "review_id", "file_type", "decision", "notes", "updated_at", "reviewed", "excluded", "dropbox_path"];
-    const lines = [header, ...rows.map((row) => header.map((field) => row[field]))];
-    return lines.map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n";
+    return [header, ...rows.map((row) => header.map((key) => row[key]))].map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n";
   }
 
-  async function saveOnlineMerged(event) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    await saveOnlineMergedNow("manual");
+  function filteredKnown(records, decisions) {
+    const ids = new Set(records.map((r) => r.review_id));
+    const out = {};
+    Object.entries(decisions || {}).forEach(([id, value]) => {
+      if (!ids.has(id) || !hasValue(value)) return;
+      out[id] = { decision: allowedDecision(value.decision), notes: String(value.notes || ""), updatedAt: String(value.updatedAt || "") };
+    });
+    return out;
   }
 
-  async function saveOnlineMergedNow(reason = "manual") {
-    const isAuto = reason === "auto";
-    const button = document.getElementById("save-online");
-    const base = await resolvedProgressFolder();
+  function auditPayload(records, online, beforeLocal, decisions, exportedAt, current, controls, verified) {
+    return {
+      schema: "MASICS_MARIO_REVIEW_SAVE_AUDIT_V1",
+      trackerVersion: VERSION,
+      queueIdentity: cfg().queueIdentity,
+      queueVersion: cfg().queueVersion,
+      exportedAt,
+      previousOnlineExportedAt: online?.exportedAt || "",
+      source: "github-pages-cloud-viewer",
+      mergePolicy: "visible record is written from current controls before merge; online decisions preserved over blank values",
+      totalKnownRecords: records.length,
+      onlineDecisionCount: Object.keys(online?.decisions || {}).length,
+      localDecisionCount: Object.keys(beforeLocal?.decisions || {}).length,
+      mergedDecisionCount: Object.keys(decisions || {}).length,
+      visibleRecordSave: current ? {
+        queue: current.queue_number,
+        filename: current.filename,
+        reviewId: current.review_id,
+        decision: controls.decision,
+        notesLength: controls.notes.length,
+        verifiedOnline: verified
+      } : null
+    };
+  }
+
+  async function saveNow(reason = "manual") {
     if (!token()) throw new Error("Sign in with Dropbox before saving online.");
+    const isAuto = reason === "auto";
+    const base = await resolvedBase();
     if (!base) throw new Error("Online progress folder is not configured.");
 
+    const button = $("save-online");
     if (button) button.disabled = true;
-    setSaveStatus(isAuto ? "Auto-saving latest tracker online..." : "Saving online tracker and backup snapshots...");
+    setSaveStatus(isAuto ? "Auto-saving this visible record online..." : "Saving this visible record online...");
 
     try {
-      const [records, online] = await Promise.all([loadManifestRecords(), loadOnlineProgress(base)]);
-      const localProgress = loadLocalProgress();
-      const mergedDecisions = filterKnownDecisions(records, mergeDecisions(online?.decisions || {}, localProgress.decisions || {}));
-      const exportedAt = new Date().toISOString();
-      const rows = buildRows(records, mergedDecisions);
+      const [records, online] = await Promise.all([loadManifest(), loadOnline(base)]);
+      const current = currentRecord(records);
+      const controls = currentControls();
+      if (isAuto && !controls.decision) {
+        setSaveStatus("Saved locally. Choose a dropdown decision before online auto-save runs.");
+        return;
+      }
+      const beforeLocal = localProgress();
+      const local = { ...beforeLocal, queueIdentity: cfg().queueIdentity, decisions: { ...(beforeLocal.decisions || {}) } };
+      if (current && (controls.decision || controls.notes.trim())) {
+        local.decisions[current.review_id] = { decision: controls.decision, notes: controls.notes, updatedAt: new Date().toISOString() };
+      }
+      saveLocal(local);
+
+      const decisions = filteredKnown(records, mergeDecisions(online?.decisions || {}, local.decisions || {}));
+      const rows = buildRows(records, decisions);
       const reviewed = rows.filter((row) => row.reviewed).length;
       const excluded = rows.filter((row) => row.excluded).length;
-      const payload = {
+      const exportedAt = new Date().toISOString();
+      const progress = {
         schema: "MASICS_MARIO_ONLINE_REVIEW_PROGRESS_V1",
         queueIdentity: cfg().queueIdentity,
         queueVersion: cfg().queueVersion,
-        trackerVersion: version,
+        trackerVersion: VERSION,
         exportedAt,
         source: "github-pages-cloud-viewer",
-        mergePolicy: "preserve existing online note/decision over blank local values; otherwise newest updatedAt wins",
+        mergePolicy: "visible record is written from current controls before merge; online decisions preserved over blank values",
         reviewer: "Mario",
         userAgent: navigator.userAgent,
         url: location.href,
-        total: records.length || cfg().expectedRecordCount || 636,
+        total: records.length,
         reviewed,
         excluded,
-        pending: Math.max(0, (records.length || cfg().expectedRecordCount || 636) - reviewed - excluded),
-        decisions: mergedDecisions,
+        pending: Math.max(0, records.length - reviewed - excluded),
+        decisions,
         tagged: rows.filter((row) => row.reviewed),
         excludedRows: rows.filter((row) => row.excluded)
       };
-      const jsonText = JSON.stringify(payload, null, 2);
-      const csvText = buildCsv(rows);
-      const stamp = exportedAt.replace(/[:.]/g, "-");
-      const audit = buildAudit(records, online, localProgress, mergedDecisions, exportedAt);
-      const auditText = JSON.stringify(audit, null, 2);
 
-      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, jsonText, "overwrite");
-      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, csvText, "overwrite");
-      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`, auditText, "overwrite");
+      const progressText = JSON.stringify(progress, null, 2);
+      await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, progressText, "overwrite");
+      await upload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, csv(rows), "overwrite");
 
-      if (!isAuto) {
-        await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, jsonText, "add");
-        await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, auditText, "add");
+      let verified = true;
+      if (current && controls.decision) {
+        const check = await loadOnline(base);
+        const saved = check?.decisions?.[current.review_id] || {};
+        verified = String(saved.decision || "") === controls.decision && String(saved.notes || "") === controls.notes;
+        if (!verified) throw new Error(`Online verification failed for #${current.queue_number} ${current.filename}. Press Save Online again before moving on.`);
       }
 
-      saveLocalProgress({ queueIdentity: cfg().queueIdentity, decisions: mergedDecisions, exportedAt });
+      const stamp = exportedAt.replace(/[:.]/g, "-");
+      const audit = JSON.stringify(auditPayload(records, online, beforeLocal, decisions, exportedAt, current, controls, verified), null, 2);
+      await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`, audit, "overwrite");
+      if (!isAuto) {
+        await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, progressText, "add");
+        await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, audit, "add");
+      }
+
+      saveLocal({ queueIdentity: cfg().queueIdentity, decisions, exportedAt });
       window.localStorage.setItem(stampKey("last_online_sync_at"), exportedAt);
-      setSaveStatus(isAuto
-        ? `Auto-saved online latest: ${reviewed} reviewed, ${payload.pending} pending, ${excluded} excluded.`
-        : `Saved online tracker plus snapshots: ${reviewed} reviewed, ${payload.pending} pending, ${excluded} excluded.`);
-      setTopStatus(`Saved online tracker. Reviewed: ${reviewed}. Pending: ${payload.pending}. Excluded: ${excluded}.`);
+      const recordText = current ? `#${current.queue_number} ${current.filename}` : "current progress";
+      setSaveStatus(`${isAuto ? "Auto-saved" : "Saved"} and verified online: ${recordText}. Reviewed ${reviewed}, pending ${progress.pending}, excluded ${excluded}.`);
+      setTopStatus(`Saved and verified online. Reviewed: ${reviewed}. Pending: ${progress.pending}. Excluded: ${excluded}.`);
     } finally {
       if (button) button.disabled = false;
     }
   }
 
-  function hasDropdownDecision() {
-    const decision = document.getElementById("decision");
-    return Boolean(decision && String(decision.value || ""));
-  }
-
-  function scheduleAutoSave(reason = "decision") {
+  function schedule(reason) {
     if (!token()) return;
-    if (!hasDropdownDecision()) {
-      window.clearTimeout(autoSaveTimer);
-      setSaveStatus("Saved locally. Choose a dropdown decision before online auto-save runs.");
+    window.clearTimeout(timer);
+    const controls = currentControls();
+    if (!controls.decision) {
+      setSaveStatus("Saved locally. Pick a dropdown before online auto-save runs.");
       return;
     }
-    window.clearTimeout(autoSaveTimer);
-    const delayMs = reason === "decision" ? 900 : 2600;
-    setSaveStatus("Saved locally. Online auto-save queued after dropdown selection...");
-    autoSaveTimer = window.setTimeout(() => {
-      runAutoSave().catch((err) => {
-        setSaveStatus(`Auto-save online failed: ${err.message || err}. Press Save Online.`);
-      });
-    }, delayMs);
+    setSaveStatus("Saved locally. Online verification queued...");
+    timer = window.setTimeout(() => runAuto().catch((err) => setSaveStatus(`Online save failed: ${err.message || err}`)), reason === "notes" ? 2600 : 900);
   }
 
-  async function runAutoSave() {
-    if (!token() || !hasDropdownDecision()) return;
-    if (autoSaveInFlight) {
-      autoSaveQueued = true;
-      return;
-    }
-    autoSaveInFlight = true;
+  async function runAuto() {
+    if (inFlight) { queued = true; return; }
+    inFlight = true;
     try {
       do {
-        autoSaveQueued = false;
-        await saveOnlineMergedNow("auto");
-      } while (autoSaveQueued && hasDropdownDecision());
-    } finally {
-      autoSaveInFlight = false;
-    }
+        queued = false;
+        await saveNow("auto");
+      } while (queued);
+    } finally { inFlight = false; }
   }
 
   document.addEventListener("click", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    if (target.id !== "save-online") return;
-    saveOnlineMerged(event).catch((err) => setSaveStatus(err.message || "Online tracker save failed."));
+    if (!(target instanceof HTMLElement) || target.id !== "save-online") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    saveNow("manual").catch((err) => setSaveStatus(err.message || "Online save failed."));
   }, true);
 
   document.addEventListener("change", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    if (target.id === "decision") scheduleAutoSave("decision");
+    if (!(target instanceof HTMLElement) || target.id !== "decision") return;
+    schedule("decision");
   }, true);
 
   document.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (target.id === "notes") scheduleAutoSave("notes");
-    if (target.id === "decision") scheduleAutoSave("decision");
+    if (target.id === "notes") schedule("notes");
+    if (target.id === "decision") schedule("decision");
   }, true);
 
   window.MASICS_ONLINE_SAVE_MERGE_SELF_TEST = () => ({
-    version,
-    autoRequiresDropdownDecision: !token() || !hasDropdownDecision() ? true : hasDropdownDecision(),
-    autoSnapshotsDisabledInCode: /if \(!isAuto\)/.test(saveOnlineMergedNow.toString()),
-    manualSnapshotsRemainInCode: /MASICS_MARIO_REVIEW_PROGRESS_\$\{stamp\}/.test(saveOnlineMergedNow.toString()) && /MASICS_MARIO_REVIEW_AUDIT_\$\{stamp\}/.test(saveOnlineMergedNow.toString()),
-    notesDelayMs: 2600,
-    decisionDelayMs: 900
+    version: VERSION,
+    savesVisibleRecordFromPage: /currentRecord\(records\)/.test(saveNow.toString()),
+    verifiesByReadingDropboxBack: /Online verification failed/.test(saveNow.toString()),
+    autoRequiresDropdown: /!controls\.decision/.test(schedule.toString()),
+    manualSnapshotsOnly: /if \(!isAuto\)/.test(saveNow.toString())
   });
 })();
