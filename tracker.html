@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <h1>MASICS Review Tracker</h1>
-      <p id="tracker-status">Sign in with Dropbox to review saved progress, logs, and backup snapshots.</p>
+      <p id="tracker-status">Sign in with Dropbox to review saved progress, logs, backup snapshots, and duplicate candidates.</p>
     </div>
     <div class="auth-actions">
       <a class="button-link" href="./fresh.html">Viewer</a>
@@ -30,6 +30,8 @@
       <div class="metric"><span>Last Save</span><strong id="metric-exported">-</strong></div>
       <div class="metric"><span>Progress Backups</span><strong id="metric-progress-backups">-</strong></div>
       <div class="metric"><span>Audit Backups</span><strong id="metric-audit-backups">-</strong></div>
+      <div class="metric"><span>Duplicate Groups</span><strong id="metric-duplicate-groups">-</strong></div>
+      <div class="metric"><span>Reviewed Duplicate Groups</span><strong id="metric-reviewed-duplicate-groups">-</strong></div>
     </section>
 
     <section class="tracker-tools">
@@ -50,6 +52,34 @@
       <div class="tracker-actions">
         <button id="export-reviewed-csv" type="button">Export Reviewed CSV</button>
         <button id="export-audit-json" type="button">Export Latest Audit JSON</button>
+        <button id="export-duplicates-csv" type="button">Export Duplicate Audit CSV</button>
+        <button id="export-duplicates-json" type="button">Export Duplicate Audit JSON</button>
+      </div>
+    </section>
+
+    <section class="tracker-panel">
+      <div class="panel-header">
+        <div>
+          <h2>Duplicate Audit</h2>
+          <p class="muted">Scans the loaded manifest and review progress only. It does not open, download, delete, or modify evidence files.</p>
+        </div>
+        <span id="duplicate-summary" class="muted">Not loaded</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Group</th>
+              <th>Count</th>
+              <th>Reviewed / Pending</th>
+              <th>Records</th>
+            </tr>
+          </thead>
+          <tbody id="duplicate-body">
+            <tr><td colspan="5">Sign in to scan duplicate candidates.</td></tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
@@ -122,6 +152,6 @@
     </section>
   </main>
   <script src="assets/config.js?v=20260707-4"></script>
-  <script src="assets/tracker-report.js?v=20260707-8"></script>
+  <script src="assets/tracker-report.js?v=20260709-duplicates-1"></script>
 </body>
 </html>
