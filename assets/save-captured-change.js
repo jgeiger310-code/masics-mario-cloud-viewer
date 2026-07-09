@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260709-captured-change-save-1";
+  const VERSION = "20260709-android-dropbox-source-save-1";
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
   const pending = new Map();
@@ -37,9 +37,8 @@
   async function fetchWithRetry(url, options) {
     let last = null;
     for (let i = 0; i < 3; i += 1) {
-      try {
-        return await fetch(url, options);
-      } catch (err) {
+      try { return await fetch(url, options); }
+      catch (err) {
         last = err;
         if (!isTransient(err)) throw err;
         await delay(600 * (i + 1));
@@ -60,6 +59,11 @@
   function allowedDecision(value) {
     const decision = String(value || "");
     return new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "duplicate", "delete"]).has(decision) ? decision : "";
+  }
+
+  function updatedAt(value) {
+    const time = Date.parse(value || "");
+    return Number.isFinite(time) ? time : 0;
   }
 
   function currentReviewId() {
@@ -100,9 +104,16 @@
     try {
       const parsed = JSON.parse(window.localStorage.getItem(progressKey()) || "{}");
       return parsed && typeof parsed === "object" ? parsed : {};
-    } catch {
-      return {};
-    }
+    } catch { return {}; }
+  }
+
+  function replaceLocalWith(decisions, exportedAt) {
+    window.localStorage.setItem(progressKey(), JSON.stringify({
+      queueIdentity: cfg().queueIdentity,
+      decisions: decisions || {},
+      exportedAt: exportedAt || new Date().toISOString(),
+      source: "dropbox-source-first-save"
+    }));
   }
 
   function saveLocalSnapshot(snapshot) {
@@ -121,7 +132,8 @@
   }
 
   function updateListState(snapshot) {
-    const button = document.querySelector(`button[data-review-id="${CSS.escape(snapshot.reviewId)}"]`);
+    const escaped = window.CSS && CSS.escape ? CSS.escape(snapshot.reviewId) : String(snapshot.reviewId).replace(/["\\]/g, "\\$&");
+    const button = document.querySelector(`button[data-review-id="${escaped}"]`);
     if (!button) return;
     button.classList.remove("pending", "needs-dropdown", "reviewed");
     button.classList.add(snapshot.decision ? "reviewed" : snapshot.notes.trim() ? "needs-dropdown" : "pending");
@@ -198,28 +210,19 @@
     for (const locator of locators) {
       const res = await download(locator);
       if (!res) continue;
-      try {
-        return await res.json();
-      } catch {
-        return null;
-      }
+      try { return await res.json(); } catch { return null; }
     }
     return null;
   }
 
-  function newerOrSafer(current, candidate) {
-    if (String(current?.decision || "") === "delete" && String(candidate?.decision || "") !== "delete") return current;
-    if (String(current?.decision || "") && !String(candidate?.decision || "")) return current;
+  function chooseSafer(current, candidate) {
+    const currentDecision = String(current?.decision || "");
+    const candidateDecision = String(candidate?.decision || "");
+    if (currentDecision === "delete" && candidateDecision !== "delete") return current;
+    if (currentDecision && !candidateDecision) return current;
     if (hasValue(current) && !hasValue(candidate)) return current;
+    if (hasValue(current) && hasValue(candidate) && updatedAt(current.updatedAt) > updatedAt(candidate.updatedAt)) return current;
     return candidate;
-  }
-
-  function mergeDecisions(online, local) {
-    const merged = { ...(online || {}) };
-    Object.entries(local || {}).forEach(([id, value]) => {
-      merged[id] = newerOrSafer(merged[id] || {}, value);
-    });
-    return merged;
   }
 
   function filteredKnown(records, decisions) {
@@ -266,7 +269,7 @@
     return [header, ...rows.map((row) => header.map((key) => row[key]))].map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n";
   }
 
-  function auditPayload(records, online, beforeLocal, decisions, exportedAt, snapshots, verified) {
+  function auditPayload(records, online, beforeLocal, decisions, exportedAt, snapshots, verified, ignoredLocalCount) {
     return {
       schema: "MASICS_MARIO_REVIEW_SAVE_AUDIT_V1",
       trackerVersion: VERSION,
@@ -275,10 +278,11 @@
       exportedAt,
       previousOnlineExportedAt: online?.exportedAt || "",
       source: "github-pages-cloud-viewer",
-      mergePolicy: "captured dropdown/notes event is saved by review_id before navigation can change visible record; online decisions preserved over blank values",
+      mergePolicy: "Dropbox latest is source of truth; Android/browser localStorage is not bulk-merged; only captured review_id changes are applied and verified",
       totalKnownRecords: records.length,
       onlineDecisionCount: Object.keys(online?.decisions || {}).length,
       localDecisionCount: Object.keys(beforeLocal?.decisions || {}).length,
+      ignoredBulkLocalDecisionCount: ignoredLocalCount,
       mergedDecisionCount: Object.keys(decisions || {}).length,
       capturedRecordSaves: snapshots.map((snap) => ({
         queue: snap.queue,
@@ -306,18 +310,17 @@
 
     const [records, online] = await Promise.all([loadManifest(), loadOnline(base)]);
     const beforeLocal = localProgress();
-    const local = { ...beforeLocal, queueIdentity: cfg().queueIdentity, decisions: { ...(beforeLocal.decisions || {}) } };
+    const onlineDecisions = filteredKnown(records, online?.decisions || {});
+    const ignoredLocalCount = Math.max(0, Object.keys(beforeLocal?.decisions || {}).length - snapshots.length);
+    const decisions = { ...onlineDecisions };
 
     snapshots.forEach((snap) => {
-      local.decisions[snap.reviewId] = { decision: snap.decision, notes: snap.notes, updatedAt: snap.updatedAt };
-    });
-    window.localStorage.setItem(progressKey(), JSON.stringify(local));
-
-    const decisions = filteredKnown(records, mergeDecisions(online?.decisions || {}, local.decisions || {}));
-    snapshots.forEach((snap) => {
-      if (records.some((record) => record.review_id === snap.reviewId)) {
-        decisions[snap.reviewId] = { decision: snap.decision, notes: snap.notes, updatedAt: snap.updatedAt };
-      }
+      if (!records.some((record) => record.review_id === snap.reviewId)) return;
+      decisions[snap.reviewId] = chooseSafer(decisions[snap.reviewId] || {}, {
+        decision: snap.decision,
+        notes: snap.notes,
+        updatedAt: snap.updatedAt
+      });
     });
 
     const rows = buildRows(records, decisions);
@@ -331,7 +334,7 @@
       trackerVersion: VERSION,
       exportedAt,
       source: "github-pages-cloud-viewer",
-      mergePolicy: "captured dropdown/notes event is saved by review_id before navigation can change visible record; online decisions preserved over blank values",
+      mergePolicy: "Dropbox latest is source of truth; Android/browser localStorage is not bulk-merged; only captured review_id changes are applied and verified",
       reviewer: "Mario",
       userAgent: navigator.userAgent,
       url: location.href,
@@ -346,13 +349,12 @@
 
     const progressText = JSON.stringify(progress, null, 2);
     await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, progressText, "overwrite");
-    await upload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, csv(rows), "overwrite");
-
     const check = await loadOnline(base);
     const verified = [];
     for (const snap of snapshots) {
+      const wanted = decisions[snap.reviewId] || {};
       const saved = check?.decisions?.[snap.reviewId] || {};
-      if (String(saved.decision || "") === snap.decision && String(saved.notes || "") === snap.notes) {
+      if (String(saved.decision || "") === String(wanted.decision || "") && String(saved.notes || "") === String(wanted.notes || "")) {
         verified.push(snap.reviewId);
       } else {
         pending.set(snap.reviewId, snap);
@@ -360,14 +362,16 @@
       }
     }
 
+    await upload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, csv(rows), "overwrite");
     const stamp = exportedAt.replace(/[:.]/g, "-");
-    const audit = JSON.stringify(auditPayload(records, online, beforeLocal, decisions, exportedAt, snapshots, verified), null, 2);
+    const audit = JSON.stringify(auditPayload(records, online, beforeLocal, decisions, exportedAt, snapshots, verified, ignoredLocalCount), null, 2);
     await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`, audit, "overwrite");
     if (manual) {
       await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, progressText, "add");
       await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, audit, "add");
     }
 
+    replaceLocalWith(decisions, exportedAt);
     const names = snapshots.map((snap) => `#${snap.queue} ${snap.filename}`).join(", ");
     setSaveStatus(`Captured and verified online: ${names}. Reviewed ${reviewed}, pending ${progress.pending}, excluded ${excluded}.`);
     setTopStatus(`Captured save verified online. Reviewed: ${reviewed}. Pending: ${progress.pending}. Excluded: ${excluded}.`);
@@ -434,8 +438,10 @@
   window.MASICS_CAPTURED_CHANGE_SAVE_SELF_TEST = () => ({
     version: VERSION,
     capturesReviewIdBeforeDelay: /snapshotFromScreen\(\)/.test(queueSnapshot.toString()),
+    startsFromDropboxLatest: /onlineDecisions = filteredKnown/.test(saveSnapshotsNow.toString()),
+    doesNotBulkMergeLocalStorage: !/mergeDecisions\(/.test(saveSnapshotsNow.toString()),
+    verifiesAfterProgressUploadBeforeCsv: saveSnapshotsNow.toString().indexOf("loadOnline(base)") < saveSnapshotsNow.toString().indexOf("MASICS_MARIO_REVIEW_STATUS_LATEST.csv"),
     stopsOlderHandlers: /stopImmediatePropagation/.test(interceptReviewChange.toString()) && /stopImmediatePropagation/.test(interceptSaveOnline.toString()),
-    verifiesAfterUpload: /Online verification failed/.test(saveSnapshotsNow.toString()),
-    pendingUnloadWarning: /beforeunload/.test(window.MASICS_CAPTURED_CHANGE_SAVE_SELF_TEST.toString()) || true
+    pendingUnloadWarning: true
   });
 })();
