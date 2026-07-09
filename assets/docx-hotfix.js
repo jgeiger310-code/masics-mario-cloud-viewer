@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260709-1";
+  const VERSION = "20260709-2";
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const MAX_DOCX_PREVIEW_BYTES = 50 * 1024 * 1024;
   const MANIFEST_CACHE_KEY = "masics_docx_hotfix_manifest_cache";
@@ -95,8 +95,7 @@
   async function loadManifestRecords() {
     if (manifestRecords) return manifestRecords;
     const conf = cfg();
-    const locators = [conf.manifestDropboxPath, conf.manifestDropboxPathAlternates || []];
-    const response = await downloadFirst(locators);
+    const response = await downloadFirst([conf.manifestDropboxPath, conf.manifestDropboxPathAlternates || []]);
     const manifest = await response.json();
     if (!manifest || !Array.isArray(manifest.records)) throw new Error("DOCX hotfix could not read the review manifest.");
     manifestRecords = manifest.records;
@@ -120,20 +119,17 @@
   function appendFileActions(container, url, record, openLabel = "Open original") {
     const actions = document.createElement("div");
     actions.className = "preview-file-actions";
-
     const open = document.createElement("a");
     open.className = "preview-open";
     open.href = url;
     open.target = "_blank";
     open.rel = "noopener";
     open.textContent = openLabel;
-
     const save = document.createElement("a");
     save.className = "preview-open";
     save.href = url;
     save.download = record.filename || "evidence.docx";
     save.textContent = "Save a copy";
-
     actions.append(open, save);
     container.appendChild(actions);
   }
@@ -146,9 +142,7 @@
       for (const attr of [...node.attributes]) {
         const name = attr.name.toLowerCase();
         const value = attr.value.trim().toLowerCase();
-        if (name.startsWith("on") || name === "srcdoc" || ((name === "href" || name === "src") && value.startsWith("javascript:"))) {
-          node.removeAttribute(attr.name);
-        }
+        if (name.startsWith("on") || name === "srcdoc" || ((name === "href" || name === "src") && value.startsWith("javascript:"))) node.removeAttribute(attr.name);
       }
       if (node.tagName === "A") {
         node.target = "_blank";
@@ -169,7 +163,6 @@
   async function renderDocx(blob, record, preview) {
     activeObjectUrl = URL.createObjectURL(blob);
     appendFileActions(preview, activeObjectUrl, record, "Open DOCX");
-
     if (blob.size > MAX_DOCX_PREVIEW_BYTES) {
       const message = document.createElement("p");
       message.className = "preview-message";
@@ -177,7 +170,6 @@
       preview.prepend(message);
       return { statusMessage: "DOCX fallback ready. File is too large for in-page preview." };
     }
-
     try {
       const mammoth = await waitForMammoth();
       const result = await mammoth.convertToHtml({ arrayBuffer: await blob.arrayBuffer() });
@@ -205,16 +197,13 @@
       queued = true;
       return true;
     }
-
     inFlight = true;
     queued = false;
     lastKey = key;
-
     try {
       const records = await loadManifestRecords();
       const record = activeRecordFrom(records);
       if (!record || !isDocxRecord(record)) return false;
-
       releaseObjectUrl();
       preview.innerHTML = "";
       setStatus("Loading DOCX from Dropbox for in-page preview...");
@@ -242,9 +231,8 @@
   window.addEventListener("click", (event) => {
     const button = event.target && event.target.closest && event.target.closest("#load-evidence");
     if (!button) return;
-    const title = ($("record-title")?.textContent || "").toLowerCase();
-    const type = ($("record-meta")?.textContent || "").toLowerCase();
-    if (!title.endsWith(".docx") && !type.includes("file type") && !type.includes("docx")) return;
+    const title = ($("record-title")?.textContent || "").trim().toLowerCase();
+    if (!title.endsWith(".docx")) return;
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -263,6 +251,7 @@
       removesScript: !bad.querySelector("script"),
       removesJavascriptHref: !/javascript:/i.test(bad.innerHTML),
       findsDocx: isDocxRecord({ filename: "sample.docx" }),
+      ignoresNonDocx: !isDocxRecord({ filename: "sample.pdf" }),
       cache: window.sessionStorage.getItem(MANIFEST_CACHE_KEY) || ""
     };
   };
