@@ -14,6 +14,8 @@
   let refreshTimer = 0;
   let loadInFlight = false;
 
+  window.MASICS_TRACKER_REPORT_VERSION = "20260709-duplicates-1";
+
   const $ = (id) => document.getElementById(id);
   const els = {
     status: $("tracker-status"),
@@ -29,14 +31,20 @@
     exported: $("metric-exported"),
     progressBackups: $("metric-progress-backups"),
     auditBackups: $("metric-audit-backups"),
+    duplicateGroupsMetric: $("metric-duplicate-groups"),
+    reviewedDuplicateGroupsMetric: $("metric-reviewed-duplicate-groups"),
     reviewedCount: $("reviewed-count"),
     reviewedBody: $("reviewed-body"),
     backupCount: $("backup-count"),
     backupBody: $("backup-body"),
     auditSummary: $("audit-summary"),
     auditBody: $("audit-body"),
+    duplicateSummary: $("duplicate-summary"),
+    duplicateBody: $("duplicate-body"),
     exportReviewed: $("export-reviewed-csv"),
-    exportAudit: $("export-audit-json")
+    exportAudit: $("export-audit-json"),
+    exportDuplicatesCsv: $("export-duplicates-csv"),
+    exportDuplicatesJson: $("export-duplicates-json")
   };
 
   function setStatus(message) {
@@ -260,6 +268,23 @@
     return map;
   }
 
+  function savedFor(reviewId) {
+    return (latestProgress?.decisions || {})[reviewId] || {};
+  }
+
+  function rowStateFor(record) {
+    const saved = savedFor(record.review_id);
+    const decision = saved?.decision || "";
+    return {
+      decision,
+      notes: saved?.notes || "",
+      updatedAt: saved?.updatedAt || "",
+      reviewed: Boolean(decision && decision !== "delete"),
+      excluded: decision === "delete",
+      pending: !decision
+    };
+  }
+
   function reviewedRows() {
     const recordsById = recordMap();
     const decisions = latestProgress?.decisions || {};
@@ -291,13 +316,79 @@
     });
   }
 
-  function renderMetrics(rows) {
+  function normalizePath(value) {
+    return String(value || "").trim().toLowerCase().replace(/\\/g, "/").replace(/\/+/g, "/");
+  }
+
+  function normalizeFilename(value) {
+    return String(value || "").trim().toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+  }
+
+  function stemFilename(value) {
+    return normalizeFilename(value).replace(/\.[a-z0-9]{1,8}$/i, "");
+  }
+
+  function fuzzyFilenameKey(record) {
+    const ext = String(record.extension || record.file_type || "").replace(/^\./, "").toLowerCase();
+    let stem = stemFilename(record.filename);
+    stem = stem
+      .replace(/\b(copy|scan|scanned|final|draft|edited|new|old)\b/g, " ")
+      .replace(/\bv\d+\b/g, " ")
+      .replace(/\(\d+\)|\[\d+\]|[-_ ]+\d+$/g, " ")
+      .replace(/[^a-z0-9]+/g, "")
+      .trim();
+    return stem && stem.length >= 6 ? `${stem}.${ext}` : "";
+  }
+
+  function contentHashFor(record) {
+    const direct = String(record.database_file_sha256 || "").trim().toLowerCase();
+    if (/^[a-f0-9]{64}$/.test(direct)) return direct;
+    const review = String(record.review_id || "").trim().toLowerCase();
+    const match = review.match(/^sha:([a-f0-9]{64})$/);
+    return match ? match[1] : "";
+  }
+
+  function addGroup(map, type, key, record) {
+    if (!key) return;
+    const mapKey = `${type}:${key}`;
+    if (!map.has(mapKey)) map.set(mapKey, { type, key, records: [] });
+    map.get(mapKey).records.push(record);
+  }
+
+  function duplicateAuditGroups() {
+    const groups = new Map();
+    manifestRecords.forEach((record) => {
+      addGroup(groups, "Exact content hash", contentHashFor(record), record);
+      addGroup(groups, "Exact Dropbox path", normalizePath(record.dropbox_path), record);
+      addGroup(groups, "Same filename", normalizeFilename(record.filename), record);
+      addGroup(groups, "Likely filename match", fuzzyFilenameKey(record), record);
+    });
+
+    const filtered = [...groups.values()].filter((group) => group.records.length > 1).map((group) => {
+      const ids = new Set(group.records.map((record) => record.review_id));
+      const records = [...ids].map((id) => group.records.find((record) => record.review_id === id)).filter(Boolean);
+      const reviewed = records.filter((record) => rowStateFor(record).reviewed).length;
+      const excluded = records.filter((record) => rowStateFor(record).excluded).length;
+      const pending = records.length - reviewed - excluded;
+      return { ...group, records, reviewed, excluded, pending };
+    }).filter((group) => group.records.length > 1);
+
+    const severity = { "Exact content hash": 1, "Exact Dropbox path": 2, "Same filename": 3, "Likely filename match": 4 };
+    return filtered.sort((a, b) => {
+      const reviewPressure = Number(b.reviewed > 0 && b.pending > 0) - Number(a.reviewed > 0 && a.pending > 0);
+      if (reviewPressure) return reviewPressure;
+      return (severity[a.type] || 9) - (severity[b.type] || 9) || b.records.length - a.records.length || a.key.localeCompare(b.key);
+    });
+  }
+
+  function renderMetrics(rows, duplicateGroups) {
     const total = manifestRecords.length || latestProgress.total || cfg.expectedRecordCount || "-";
     const excluded = rows.filter((row) => row.decision === "delete").length;
     const reviewed = rows.filter((row) => row.decision && row.decision !== "delete").length;
     const pending = Math.max(0, Number(total || 0) - reviewed - excluded);
     const progressBackups = backupEntries.filter((entry) => /^MASICS_MARIO_REVIEW_PROGRESS_/i.test(entry.name || "")).length;
     const auditBackups = backupEntries.filter((entry) => /^MASICS_MARIO_REVIEW_AUDIT_/i.test(entry.name || "")).length;
+    const reviewedDupGroups = duplicateGroups.filter((group) => group.reviewed > 0 && group.pending > 0).length;
     els.total.textContent = total;
     els.reviewed.textContent = reviewed;
     els.pending.textContent = pending;
@@ -305,6 +396,8 @@
     els.exported.textContent = formatTime(latestProgress.exportedAt);
     els.progressBackups.textContent = progressBackups;
     els.auditBackups.textContent = auditBackups;
+    if (els.duplicateGroupsMetric) els.duplicateGroupsMetric.textContent = duplicateGroups.length;
+    if (els.reviewedDuplicateGroupsMetric) els.reviewedDuplicateGroupsMetric.textContent = reviewedDupGroups;
   }
 
   function renderReviewed(rows) {
@@ -322,6 +415,33 @@
         <td>${escapeHtml(row.notes)}</td>
       </tr>
     `).join("");
+  }
+
+  function renderDuplicates(groups) {
+    const pressureGroups = groups.filter((group) => group.reviewed > 0 && group.pending > 0);
+    els.duplicateSummary.textContent = `${groups.length} groups found. ${pressureGroups.length} have reviewed plus pending items.`;
+    if (!groups.length) {
+      els.duplicateBody.innerHTML = `<tr><td colspan="5">No exact or likely duplicate groups were found in the loaded manifest.</td></tr>`;
+      return;
+    }
+    const shown = groups.slice(0, 100);
+    els.duplicateBody.innerHTML = shown.map((group) => {
+      const records = group.records.slice(0, 8).map((record) => {
+        const state = rowStateFor(record);
+        const label = state.excluded ? "excluded" : state.reviewed ? state.decision : "pending";
+        return `#${escapeHtml(record.queue_number)} ${escapeHtml(record.filename)} <span class="muted">${escapeHtml(label)} | ${escapeHtml(record.dropbox_path || "")}</span>`;
+      }).join("<br>");
+      const more = group.records.length > 8 ? `<br><span class="muted">+${group.records.length - 8} more in this group</span>` : "";
+      return `
+        <tr>
+          <td>${escapeHtml(group.type)}</td>
+          <td><span class="muted">${escapeHtml(group.key)}</span></td>
+          <td>${group.records.length}</td>
+          <td>${group.reviewed} reviewed / ${group.pending} pending / ${group.excluded} excluded</td>
+          <td>${records}${more}</td>
+        </tr>
+      `;
+    }).join("");
   }
 
   function renderBackups() {
@@ -372,7 +492,9 @@
 
   function render() {
     const allRows = reviewedRows();
-    renderMetrics(allRows);
+    const duplicateGroups = duplicateAuditGroups();
+    renderMetrics(allRows, duplicateGroups);
+    renderDuplicates(duplicateGroups);
     renderReviewed(filteredReviewedRows());
     renderBackups();
     renderAudit();
@@ -412,6 +534,76 @@
     downloadText(`masics-latest-save-audit-${new Date().toISOString().replace(/[:.]/g, "-")}.json`, JSON.stringify(latestAudit || {}, null, 2), "application/json");
   }
 
+  function duplicateAuditExportRows() {
+    return duplicateAuditGroups().flatMap((group) => group.records.map((record) => {
+      const state = rowStateFor(record);
+      return {
+        type: group.type,
+        groupKey: group.key,
+        groupCount: group.records.length,
+        groupReviewed: group.reviewed,
+        groupPending: group.pending,
+        groupExcluded: group.excluded,
+        queue: record.queue_number || "",
+        filename: record.filename || "",
+        reviewId: record.review_id || "",
+        fileType: record.file_type || record.extension || "",
+        decision: state.decision,
+        notes: state.notes,
+        updatedAt: state.updatedAt,
+        dropboxPath: record.dropbox_path || "",
+        databaseFileId: record.database_file_id || "",
+        databaseSha256: contentHashFor(record)
+      };
+    }));
+  }
+
+  function exportDuplicatesCsv() {
+    const header = ["type", "group_key", "group_count", "group_reviewed", "group_pending", "group_excluded", "queue", "filename", "review_id", "file_type", "decision", "notes", "updated_at", "dropbox_path", "database_file_id", "database_sha256"];
+    const rows = duplicateAuditExportRows();
+    const lines = [header, ...rows.map((row) => [
+      row.type, row.groupKey, row.groupCount, row.groupReviewed, row.groupPending, row.groupExcluded,
+      row.queue, row.filename, row.reviewId, row.fileType, row.decision, row.notes, row.updatedAt, row.dropboxPath, row.databaseFileId, row.databaseSha256
+    ])];
+    downloadText(`masics-duplicate-audit-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`, lines.map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n", "text/csv");
+  }
+
+  function exportDuplicatesJson() {
+    const payload = {
+      schema: "MASICS_DUPLICATE_AUDIT_V1",
+      generatedAt: new Date().toISOString(),
+      source: "github-pages-tracker",
+      queueIdentity: latestProgress?.queueIdentity || cfg.queueIdentity || "",
+      manifestRecordCount: manifestRecords.length,
+      progressExportedAt: latestProgress?.exportedAt || "",
+      note: "This audit uses manifest metadata and review progress only. It does not open, download, delete, or modify evidence files.",
+      groups: duplicateAuditGroups().map((group) => ({
+        type: group.type,
+        key: group.key,
+        count: group.records.length,
+        reviewed: group.reviewed,
+        pending: group.pending,
+        excluded: group.excluded,
+        records: group.records.map((record) => {
+          const state = rowStateFor(record);
+          return {
+            queue: record.queue_number || "",
+            filename: record.filename || "",
+            reviewId: record.review_id || "",
+            fileType: record.file_type || record.extension || "",
+            decision: state.decision,
+            notes: state.notes,
+            updatedAt: state.updatedAt,
+            dropboxPath: record.dropbox_path || "",
+            databaseFileId: record.database_file_id || "",
+            databaseSha256: contentHashFor(record)
+          };
+        })
+      }))
+    };
+    downloadText(`masics-duplicate-audit-${new Date().toISOString().replace(/[:.]/g, "-")}.json`, JSON.stringify(payload, null, 2), "application/json");
+  }
+
   function wireEvents() {
     els.signIn.addEventListener("click", () => signIn().catch((err) => setStatus(err.message || "Dropbox sign-in failed.")));
     els.signOut.addEventListener("click", () => {
@@ -425,6 +617,8 @@
     els.decision.addEventListener("change", render);
     els.exportReviewed.addEventListener("click", exportReviewedCsv);
     els.exportAudit.addEventListener("click", exportAuditJson);
+    if (els.exportDuplicatesCsv) els.exportDuplicatesCsv.addEventListener("click", exportDuplicatesCsv);
+    if (els.exportDuplicatesJson) els.exportDuplicatesJson.addEventListener("click", exportDuplicatesJson);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && token()) loadData().catch((err) => setStatus(err.message || "Tracker refresh failed."));
     });
