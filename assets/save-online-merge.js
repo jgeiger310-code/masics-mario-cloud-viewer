@@ -3,10 +3,12 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const version = "20260707-6";
+  const version = "20260709-save-throttle-1";
   let autoSaveTimer = 0;
   let autoSaveInFlight = false;
   let autoSaveQueued = false;
+
+  window.MASICS_ONLINE_SAVE_MERGE_VERSION = version;
 
   function cfg() {
     return window.MASICS_DROPBOX_CONFIG || {};
@@ -339,13 +341,14 @@
   }
 
   async function saveOnlineMergedNow(reason = "manual") {
+    const isAuto = reason === "auto";
     const button = document.getElementById("save-online");
     const base = await resolvedProgressFolder();
     if (!token()) throw new Error("Sign in with Dropbox before saving online.");
     if (!base) throw new Error("Online progress folder is not configured.");
 
     if (button) button.disabled = true;
-    setSaveStatus(reason === "auto" ? "Auto-saving online tracker..." : "Saving online tracker...");
+    setSaveStatus(isAuto ? "Auto-saving latest tracker online..." : "Saving online tracker and backup snapshots...");
 
     try {
       const [records, online] = await Promise.all([loadManifestRecords(), loadOnlineProgress(base)]);
@@ -382,32 +385,48 @@
 
       await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, jsonText, "overwrite");
       await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, csvText, "overwrite");
-      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, jsonText, "add");
       await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`, auditText, "overwrite");
-      await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, auditText, "add");
+
+      if (!isAuto) {
+        await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, jsonText, "add");
+        await dropboxUpload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, auditText, "add");
+      }
 
       saveLocalProgress({ queueIdentity: cfg().queueIdentity, decisions: mergedDecisions, exportedAt });
       window.localStorage.setItem(stampKey("last_online_sync_at"), exportedAt);
-      setSaveStatus(`Saved online tracker: ${reviewed} reviewed, ${payload.pending} pending, ${excluded} excluded.`);
+      setSaveStatus(isAuto
+        ? `Auto-saved online latest: ${reviewed} reviewed, ${payload.pending} pending, ${excluded} excluded.`
+        : `Saved online tracker plus snapshots: ${reviewed} reviewed, ${payload.pending} pending, ${excluded} excluded.`);
       setTopStatus(`Saved online tracker. Reviewed: ${reviewed}. Pending: ${payload.pending}. Excluded: ${excluded}.`);
     } finally {
       if (button) button.disabled = false;
     }
   }
 
-  function scheduleAutoSave() {
+  function hasDropdownDecision() {
+    const decision = document.getElementById("decision");
+    return Boolean(decision && String(decision.value || ""));
+  }
+
+  function scheduleAutoSave(reason = "decision") {
     if (!token()) return;
+    if (!hasDropdownDecision()) {
+      window.clearTimeout(autoSaveTimer);
+      setSaveStatus("Saved locally. Choose a dropdown decision before online auto-save runs.");
+      return;
+    }
     window.clearTimeout(autoSaveTimer);
-    setSaveStatus("Saved locally. Auto-save online pending...");
+    const delayMs = reason === "decision" ? 900 : 2600;
+    setSaveStatus("Saved locally. Online auto-save queued after dropdown selection...");
     autoSaveTimer = window.setTimeout(() => {
       runAutoSave().catch((err) => {
         setSaveStatus(`Auto-save online failed: ${err.message || err}. Press Save Online.`);
       });
-    }, 1400);
+    }, delayMs);
   }
 
   async function runAutoSave() {
-    if (!token()) return;
+    if (!token() || !hasDropdownDecision()) return;
     if (autoSaveInFlight) {
       autoSaveQueued = true;
       return;
@@ -417,7 +436,7 @@
       do {
         autoSaveQueued = false;
         await saveOnlineMergedNow("auto");
-      } while (autoSaveQueued);
+      } while (autoSaveQueued && hasDropdownDecision());
     } finally {
       autoSaveInFlight = false;
     }
@@ -433,12 +452,22 @@
   document.addEventListener("change", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (target.id === "decision") scheduleAutoSave();
+    if (target.id === "decision") scheduleAutoSave("decision");
   }, true);
 
   document.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (target.id === "notes" || target.id === "decision") scheduleAutoSave();
+    if (target.id === "notes") scheduleAutoSave("notes");
+    if (target.id === "decision") scheduleAutoSave("decision");
   }, true);
+
+  window.MASICS_ONLINE_SAVE_MERGE_SELF_TEST = () => ({
+    version,
+    autoRequiresDropdownDecision: !token() || !hasDropdownDecision() ? true : hasDropdownDecision(),
+    autoSnapshotsDisabledInCode: /if \(!isAuto\)/.test(saveOnlineMergedNow.toString()),
+    manualSnapshotsRemainInCode: /MASICS_MARIO_REVIEW_PROGRESS_\$\{stamp\}/.test(saveOnlineMergedNow.toString()) && /MASICS_MARIO_REVIEW_AUDIT_\$\{stamp\}/.test(saveOnlineMergedNow.toString()),
+    notesDelayMs: 2600,
+    decisionDelayMs: 900
+  });
 })();
