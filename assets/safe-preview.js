@@ -44,6 +44,8 @@
   let activePreviewUrl = "";
   let pdfJsPromise = null;
 
+  window.MASICS_SAFE_PREVIEW_VERSION = "20260709-docx-auto-1";
+
   function $(id) {
     return document.getElementById(id);
   }
@@ -86,8 +88,12 @@
     return videoExts.includes(fileExtension(record));
   }
 
+  function isDocxRecord(record) {
+    return docxExts.includes(fileExtension(record));
+  }
+
   function isAutoPreviewRecord(record) {
-    return isImageRecord(record) || isPdfRecord(record) || isAudioRecord(record) || isVideoRecord(record);
+    return isImageRecord(record) || isPdfRecord(record) || isAudioRecord(record) || isVideoRecord(record) || isDocxRecord(record);
   }
 
   function isAndroidBrowser() {
@@ -414,7 +420,7 @@
         return;
       }
 
-      status.textContent = isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : "Loading evidence preview from Dropbox...";
+      status.textContent = isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : isDocxRecord(record) ? "Loading DOCX preview from Dropbox..." : "Loading evidence preview from Dropbox...";
       const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
       const response = await downloadFirst(locators);
       const blob = previewBlob(await response.blob(), record);
@@ -450,4 +456,14 @@
 
   window.addEventListener("masics:record-change", () => schedulePreview());
   window.addEventListener("pagehide", releasePreviewUrl);
+
+  window.MASICS_SAFE_PREVIEW_SELF_TEST = () => ({
+    version: window.MASICS_SAFE_PREVIEW_VERSION,
+    docxIsAutoPreview: isAutoPreviewRecord({ filename: "sample.docx" }),
+    docIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.doc" }),
+    pptxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.pptx" }),
+    xlsxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.xlsx" }),
+    onlyActiveRecordHasDownloadPath: /const record = activeRecordFrom\(allRecords\)/.test(previewActiveRecord.toString()) && !/forEach\(|for \(let.*records/.test(previewActiveRecord.toString()),
+    noProgrammaticSaveClick: !/\.click\(\)/.test(appendFileActions.toString())
+  });
 })();
