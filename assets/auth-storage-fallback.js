@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260709-storage-quota-1";
+  const VERSION = "20260709-storage-quota-2";
   const memory = Object.create(null);
   const managedKeys = new Set([
     "masics_access_token",
@@ -37,12 +37,22 @@
     }
   }
 
-  function currentStatePayload() {
+  function currentRawState() {
     try {
-      return decodeState(new URLSearchParams(window.location.search).get("state"));
-    } catch {
-      return null;
-    }
+      const query = String(window.location.search || "").replace(/^\?/, "");
+      const pairs = query ? query.split("&") : [];
+      for (const pair of pairs) {
+        const index = pair.indexOf("=");
+        const key = decodeURIComponent((index >= 0 ? pair.slice(0, index) : pair).replace(/\+/g, " "));
+        if (key !== "state") continue;
+        return decodeURIComponent((index >= 0 ? pair.slice(index + 1) : "").replace(/\+/g, " "));
+      }
+    } catch {}
+    return "";
+  }
+
+  function currentStatePayload() {
+    return decodeState(currentRawState());
   }
 
   function cookieName(key) {
@@ -136,16 +146,29 @@
   }
 
   if (window.URLSearchParams && window.URLSearchParams.prototype) {
+    const originalGet = URLSearchParams.prototype.get;
     const originalToString = URLSearchParams.prototype.toString;
+
+    URLSearchParams.prototype.get = function patchedGet(name) {
+      const value = originalGet.call(this, name);
+      if (String(name) === "state") {
+        const payload = decodeState(value);
+        if (payload && payload.s) return payload.s;
+      }
+      return value;
+    };
+
     URLSearchParams.prototype.toString = function patchedToString() {
       try {
-        const isDropboxAuth = this.get("response_type") === "code" && this.get("state") && this.get("code_challenge");
-        const existingState = this.get("state") || "";
-        if (isDropboxAuth && !existingState.startsWith("masics1.")) {
+        const responseType = originalGet.call(this, "response_type");
+        const rawState = originalGet.call(this, "state") || "";
+        const challenge = originalGet.call(this, "code_challenge");
+        const isDropboxAuth = responseType === "code" && rawState && challenge;
+        if (isDropboxAuth && !rawState.startsWith("masics1.")) {
           const verifier = memory.masics_pkce_verifier || readCookie("masics_pkce_verifier") || "";
           if (verifier) {
             this.set("state", encodeState({
-              s: existingState,
+              s: rawState,
               v: verifier,
               r: memory.masics_auth_return_to || readCookie("masics_auth_return_to") || "",
               t: Date.now()
@@ -171,6 +194,14 @@
     version: VERSION,
     storagePrototypePatched: Boolean(window.Storage && Storage.prototype && Storage.prototype.getItem),
     stateFallbackPresent: Boolean(currentStatePayload()),
+    stateParamDecoded: (() => {
+      try {
+        const raw = encodeState({ s: "state-test", v: "verifier-test", r: "tracker" });
+        return new URLSearchParams(`state=${encodeURIComponent(raw)}`).get("state") === "state-test";
+      } catch {
+        return false;
+      }
+    })(),
     cookieFallbackAvailable: (() => {
       try {
         writeCookie("masics_oauth_state", "test");
