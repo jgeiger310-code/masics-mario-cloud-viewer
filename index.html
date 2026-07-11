@@ -9,7 +9,7 @@
   <meta http-equiv="Expires" content="0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self'; font-src 'self' data: blob:; img-src 'self' data: blob: https://*.dropboxusercontent.com https://*.dl.dropboxusercontent.com; media-src 'self' blob: https://*.dropboxusercontent.com https://*.dl.dropboxusercontent.com; frame-src 'self' blob: https://*.dropboxusercontent.com https://*.dl.dropboxusercontent.com; connect-src 'self' https://www.dropbox.com https://api.dropboxapi.com https://content.dropboxapi.com https://*.dropboxusercontent.com https://*.dl.dropboxusercontent.com https://cdn.jsdelivr.net; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>MASICS Mario Review Viewer</title>
-  <link rel="stylesheet" href="assets/styles.css?v=20260708-10">
+  <link rel="stylesheet" href="assets/styles.css?v=20260711-mobile-sticky-1">
   <link rel="stylesheet" href="assets/android-pdf.css?v=20260708-android-1">
 </head>
 <body>
@@ -46,33 +46,35 @@
     <section class="review-panel">
       <div id="empty-state" class="empty-state">The queue is protected until Dropbox sign-in completes.</div>
       <article id="record-view" hidden>
-        <div class="record-header">
-          <div>
-            <p id="record-position" class="muted"></p>
-            <h2 id="record-title"></h2>
+        <div class="sticky-review-controls">
+          <div class="record-header">
+            <div>
+              <p id="record-position" class="muted"></p>
+              <h2 id="record-title"></h2>
+            </div>
+            <div class="record-actions">
+              <button id="next-record" type="button">Next</button>
+              <button id="save-online" class="primary" type="button">Save Online</button>
+              <span id="save-status" class="save-status">Autosave ready</span>
+            </div>
           </div>
-          <div class="record-actions">
-            <button id="next-record" type="button">Next</button>
-            <button id="save-online" class="primary" type="button">Save Online</button>
-            <span id="save-status" class="save-status">Autosave ready</span>
+          <div class="decision-grid">
+            <label>Decision
+              <select id="decision">
+                <option value="">Pending</option>
+                <option value="responsive">Responsive</option>
+                <option value="nonresponsive">Non-responsive</option>
+                <option value="missing">Missing</option>
+                <option value="privileged">Privileged / withhold</option>
+                <option value="needs_review">Needs further review</option>
+                <option value="duplicate">Duplicate</option>
+                <option value="delete">Delete / exclude from review list</option>
+              </select>
+            </label>
+            <label>Notes
+              <textarea id="notes" rows="4"></textarea>
+            </label>
           </div>
-        </div>
-        <div class="decision-grid">
-          <label>Decision
-            <select id="decision">
-              <option value="">Pending</option>
-              <option value="responsive">Responsive</option>
-              <option value="nonresponsive">Non-responsive</option>
-              <option value="missing">Missing</option>
-              <option value="privileged">Privileged / withhold</option>
-              <option value="needs_review">Needs further review</option>
-              <option value="duplicate">Duplicate</option>
-              <option value="delete">Delete / exclude from review list</option>
-            </select>
-          </label>
-          <label>Notes
-            <textarea id="notes" rows="4"></textarea>
-          </label>
         </div>
         <div class="bottom-record-actions">
           <button id="previous-record" type="button">Previous</button>
