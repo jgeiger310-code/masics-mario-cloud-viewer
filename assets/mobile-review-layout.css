@@ -57,8 +57,8 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    margin: 0 -7px 3px;
-    padding: 2px 7px 3px;
+    margin: 0 -7px 5px;
+    padding: 4px 7px 5px;
     background: #f5f6f7;
     border-bottom: 1px solid #d7dbe0;
     box-shadow: 0 2px 5px rgba(29, 35, 43, 0.12);
@@ -66,82 +66,76 @@
   .record-header {
     position: static;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 178px;
+    grid-template-columns: minmax(0, 1fr) 156px;
     align-items: start;
-    gap: 2px 6px;
+    gap: 4px 7px;
     margin: 0;
     padding: 0;
     border: 0;
     background: transparent;
   }
-  #record-position { font-size: 9px; line-height: 1; }
+  #record-position { font-size: 10px; line-height: 1.1; }
   #record-title {
-    font-size: 11px;
-    line-height: 1.08;
-    max-height: 2.16em;
+    font-size: 12px;
+    line-height: 1.12;
+    max-height: 2.3em;
     overflow: hidden;
   }
   .record-actions {
     display: grid;
-    grid-template-columns: 56px minmax(0, 1fr);
-    gap: 3px;
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 4px;
     max-width: none;
   }
   .record-actions button {
-    min-height: 27px;
-    padding: 3px 5px;
-    font-size: 10px;
+    min-height: 29px;
+    padding: 4px 5px;
+    font-size: 11px;
   }
   .record-actions .save-status {
     grid-column: 1 / -1;
-    min-width: 0;
-    max-height: 1.1em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 8px;
-    line-height: 1.05;
+    font-size: 9px;
+    line-height: 1.1;
     padding: 0;
-    white-space: nowrap;
+    white-space: normal;
   }
 
   .decision-grid {
     grid-template-columns: 118px minmax(0, 1fr);
-    gap: 4px;
-    margin: 2px 0 0;
+    gap: 5px;
+    margin: 4px 0 0;
   }
   .decision-grid label {
-    gap: 1px;
-    font-size: 9px;
-    line-height: 1;
+    gap: 2px;
+    font-size: 10px;
   }
   .decision-grid select {
-    min-height: 28px;
-    height: 28px;
-    padding: 3px 5px;
-    font-size: 10px;
+    min-height: 30px;
+    height: 30px;
+    padding: 4px 6px;
+    font-size: 11px;
   }
   .decision-grid textarea {
-    min-height: 34px;
-    height: 34px;
-    padding: 3px 5px;
-    font-size: 10px;
-    line-height: 1.15;
+    min-height: 42px;
+    height: 42px;
+    padding: 5px 6px;
+    font-size: 11px;
     resize: none;
   }
 
   .bottom-record-actions {
-    margin: 4px 0 3px;
+    margin: 5px 0 4px;
     gap: 4px;
   }
   .bottom-record-actions button {
-    min-height: 28px;
-    padding: 3px;
+    min-height: 30px;
+    padding: 4px;
     font-size: 10px;
   }
   #evidence-status { font-size: 10px; line-height: 1.15; }
   .preview {
-    margin-top: 3px;
-    padding: 3px;
+    margin-top: 4px;
+    padding: 4px;
     min-height: 420px;
   }
 }
@@ -149,6 +143,6 @@
 @media (max-width: 430px) {
   .topbar .top-note { display: none; }
   .layout { grid-template-rows: minmax(92px, 18dvh) minmax(0, 1fr); }
-  .record-header { grid-template-columns: minmax(0, 1fr) 154px; }
-  .decision-grid { grid-template-columns: 104px minmax(0, 1fr); }
+  .record-header { grid-template-columns: minmax(0, 1fr) 144px; }
+  .decision-grid { grid-template-columns: 108px minmax(0, 1fr); }
 }
