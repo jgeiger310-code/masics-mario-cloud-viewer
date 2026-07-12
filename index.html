@@ -18,7 +18,7 @@
     <div>
       <h1>MASICS Mario Review Viewer</h1>
       <p id="status-line">Sign in with Dropbox to load the protected review queue.</p>
-      <p class="top-note">Every decision and note saves automatically to the shared Dropbox tracker. Save Online is only a manual retry/backup button. <span id="last-export">No progress export recorded yet.</span></p>
+      <p class="top-note">Progress saves automatically to the shared Dropbox tracker. Save Online retries immediately and creates a backup. <span id="last-export">No progress export recorded yet.</span></p>
     </div>
     <div class="auth-actions">
       <button id="sign-in" class="primary">Sign in with Dropbox</button>
@@ -94,6 +94,7 @@
     </section>
   </main>
   <script src="assets/config.js?v=20260707-4"></script>
+  <script src="assets/status-return.js?v=20260712-1"></script>
   <script src="assets/auth-storage-fallback.js?v=20260709-storage-quota-2"></script>
   <script src="assets/app.js?v=20260707-23"></script>
   <script src="assets/decision-blank-guard.js?v=20260709-no-blank-revert-1"></script>
