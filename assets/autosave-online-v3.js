@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260712-autosave-online-v3";
+  const VERSION = "20260713-autosave-online-v4";
   let debounceTimer = 0;
   let saveInProgress = false;
   let navigationBypass = false;
@@ -27,18 +27,18 @@
     if (!list || !summary) return;
     const buttons = Array.from(list.querySelectorAll("button[data-review-id]"));
     const reviewed = buttons.filter((b) => b.classList.contains("reviewed")).length;
-    const excluded = 0;
     const pending = buttons.filter((b) => b.classList.contains("pending") || b.classList.contains("needs-dropdown")).length;
-    const shown = buttons.length;
-    summary.textContent = `${shown} shown | ${reviewed} reviewed | ${pending} pending | ${excluded} excluded`;
+    summary.textContent = `${buttons.length} shown | ${reviewed} reviewed | ${pending} pending`;
   }
 
-  async function waitForSaveResult(timeoutMs = 20000) {
+  async function waitForSaveResult(previousText, timeoutMs = 30000) {
     const started = Date.now();
+    let sawSaving = false;
     while (Date.now() - started < timeoutMs) {
       const text = String($("save-status")?.textContent || "");
-      if (/Saved online:/i.test(text) || /SAVED ONLINE/i.test(text)) return true;
-      if (/failed|offline|expired|permission|could not|not allow/i.test(text)) return false;
+      if (/Saving online|Autosaving online|Saving current record/i.test(text)) sawSaving = true;
+      if (sawSaving && text !== previousText && (/Saved online:/i.test(text) || /SAVED ONLINE/i.test(text))) return true;
+      if (/failed|offline|expired|permission|could not|not allow|not confirmed/i.test(text)) return false;
       await sleep(150);
     }
     return false;
@@ -47,16 +47,17 @@
   async function saveNow(reason = "autosave") {
     if (saveInProgress) {
       const started = Date.now();
-      while (saveInProgress && Date.now() - started < 20000) await sleep(100);
+      while (saveInProgress && Date.now() - started < 30000) await sleep(100);
       return /Saved online:|SAVED ONLINE/i.test(String($("save-status")?.textContent || ""));
     }
     if (!hasCurrentValue()) return true;
     const button = $("save-online");
     if (!button) return false;
     saveInProgress = true;
+    const previousText = String($("save-status")?.textContent || "");
     setSaveStatus(reason === "navigation" ? "Saving current record online before moving..." : "Autosaving online...");
     button.click();
-    const ok = await waitForSaveResult();
+    const ok = await waitForSaveResult(previousText);
     saveInProgress = false;
     if (!ok) setSaveStatus("SAVE NOT CONFIRMED. Stay on this record and press Save Online.");
     return ok;
@@ -67,10 +68,11 @@
     clearTimeout(debounceTimer);
     setSaveStatus("Waiting to autosave online...");
     debounceTimer = setTimeout(async () => {
+      debounceTimer = 0;
       const queuedAt = lastQueuedAt;
       const ok = await saveNow("autosave");
       if (ok && queuedAt === lastQueuedAt) updateVisibleCounts();
-    }, 700);
+    }, 900);
   }
 
   document.addEventListener("input", (event) => {
@@ -87,6 +89,7 @@
     event.preventDefault();
     event.stopImmediatePropagation();
     clearTimeout(debounceTimer);
+    debounceTimer = 0;
     const ok = await saveNow("navigation");
     if (!ok) return;
     updateVisibleCounts();
