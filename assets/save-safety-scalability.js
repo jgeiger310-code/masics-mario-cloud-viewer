@@ -1,22 +1,26 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260713-save-safety-scalability-1";
-  const SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
+  const VERSION = "20260713-save-safety-scalability-2";
+  const CHECKPOINT_INTERVAL_MS = 15 * 60 * 1000;
   const MAX_SAVE_ATTEMPTS = 3;
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const cfg = window.MASICS_DROPBOX_CONFIG;
   const progressKey = `masics_cloud_progress:${cfg.queueIdentity}`;
-  const lastSnapshotKey = `${progressKey}:last_checkpoint_snapshot_at`;
+  const checkpointKey = `${progressKey}:last_checkpoint_at`;
   const safetyDbName = "masics-review-safety";
   const safetyStoreName = "progress";
 
-  let manifestCache = null;
+  let manifestRecords = null;
   let savePromise = null;
 
   const $ = (id) => document.getElementById(id);
   const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+  function authToken() {
+    return window.sessionStorage.getItem("masics_access_token") || "";
+  }
 
   function setSaveStatus(message) {
     const element = $("save-status");
@@ -28,11 +32,7 @@
     if (element) element.textContent = message;
   }
 
-  function token() {
-    return window.sessionStorage.getItem("masics_access_token") || "";
-  }
-
-  function uniqueLocators(values) {
+  function unique(values) {
     const seen = new Set();
     return values.flat().map((value) => String(value || "").trim()).filter((value) => {
       if (!value || seen.has(value)) return false;
@@ -41,16 +41,20 @@
     });
   }
 
+  function errorText(error) {
+    return String(error?.message || error || "");
+  }
+
   function isLookupError(error) {
-    return /missing|moved|not_found|malformed_path|lookup/i.test(String(error?.message || error || ""));
+    return /missing|moved|not_found|malformed_path|lookup/i.test(errorText(error));
   }
 
   function isConflictError(error) {
-    return error?.code === "dropbox_conflict" || /conflict/i.test(String(error?.message || error || ""));
+    return error?.code === "dropbox_conflict" || /conflict/i.test(errorText(error));
   }
 
   function isTransientError(error) {
-    return /Failed to fetch|NetworkError|Load failed|429|500|502|503|504/i.test(String(error?.message || error || ""));
+    return /Failed to fetch|NetworkError|Load failed|429|500|502|503|504/i.test(errorText(error));
   }
 
   async function fetchWithRetry(url, options) {
@@ -67,17 +71,17 @@
     throw lastError || new Error("Dropbox request failed before it could start.");
   }
 
-  async function dropboxRpc(endpoint, body) {
+  async function rpc(endpoint, body) {
     const response = await fetchWithRetry(DROPBOX_RPC + endpoint, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${token()}`,
+        "Authorization": `Bearer ${authToken()}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(body || {})
     });
     if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign in again before saving.");
-    if (response.status === 403) throw new Error("Dropbox did not allow access to the protected review folder.");
+    if (response.status === 403) throw new Error("Dropbox denied access to the protected review folder.");
     if (response.status === 409) {
       const error = new Error("Dropbox lookup conflict.");
       error.code = "dropbox_conflict";
@@ -87,16 +91,16 @@
     return response.json();
   }
 
-  async function dropboxDownload(locator) {
+  async function download(locator) {
     const response = await fetchWithRetry(DROPBOX_CONTENT + "files/download", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${token()}`,
+        "Authorization": `Bearer ${authToken()}`,
         "Dropbox-API-Arg": JSON.stringify({ path: locator })
       }
     });
     if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign in again before saving.");
-    if (response.status === 403) throw new Error("Dropbox did not allow access to the protected review folder.");
+    if (response.status === 403) throw new Error("Dropbox denied access to the protected review folder.");
     if (response.status === 409) {
       const detail = await response.text().catch(() => "");
       throw new Error(`Dropbox file is missing or moved: ${locator} ${detail.slice(0, 160)}`);
@@ -105,11 +109,11 @@
     return response;
   }
 
-  async function dropboxUpload(path, text, mode) {
+  async function upload(path, text, mode) {
     const response = await fetchWithRetry(DROPBOX_CONTENT + "files/upload", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${token()}`,
+        "Authorization": `Bearer ${authToken()}`,
         "Content-Type": "application/octet-stream",
         "Dropbox-API-Arg": JSON.stringify({
           path,
@@ -133,7 +137,7 @@
     return response.json();
   }
 
-  function metadataFromDownload(response) {
+  function downloadMetadata(response) {
     try {
       return JSON.parse(response.headers.get("Dropbox-API-Result") || "{}");
     } catch {
@@ -143,9 +147,9 @@
 
   async function downloadFirst(locators) {
     let lastError = null;
-    for (const locator of uniqueLocators(locators)) {
+    for (const locator of unique(locators)) {
       try {
-        return await dropboxDownload(locator);
+        return await download(locator);
       } catch (error) {
         lastError = error;
         if (!isLookupError(error)) throw error;
@@ -154,10 +158,10 @@
     throw lastError || new Error("No Dropbox locator is available.");
   }
 
-  async function resolvedProgressBase() {
+  async function progressBase() {
     if (cfg.progressDropboxFolderId) {
       try {
-        const metadata = await dropboxRpc("files/get_metadata", {
+        const metadata = await rpc("files/get_metadata", {
           path: cfg.progressDropboxFolderId,
           include_media_info: false,
           include_deleted: false
@@ -170,8 +174,8 @@
     return String(cfg.progressDropboxFolder || "").replace(/\/+$/g, "");
   }
 
-  async function loadManifestRecords() {
-    if (manifestCache) return manifestCache;
+  async function records() {
+    if (manifestRecords) return manifestRecords;
     const response = await downloadFirst([
       cfg.manifestDropboxPath,
       cfg.manifestDropboxPathAlternates || []
@@ -180,11 +184,11 @@
     if (!manifest || manifest.schema !== cfg.queueVersion || manifest.queue_identity !== cfg.queueIdentity || !Array.isArray(manifest.records)) {
       throw new Error("The protected queue manifest failed safety validation.");
     }
-    manifestCache = manifest.records;
-    return manifestCache;
+    manifestRecords = manifest.records;
+    return manifestRecords;
   }
 
-  function loadLocalProgress() {
+  function loadLocal() {
     try {
       const parsed = JSON.parse(window.localStorage.getItem(progressKey) || "{}");
       return parsed && typeof parsed === "object" ? parsed : {};
@@ -193,7 +197,7 @@
     }
   }
 
-  function hasReviewValue(value) {
+  function hasValue(value) {
     return Boolean(value && (String(value.decision || "") || String(value.notes || "").trim()));
   }
 
@@ -202,7 +206,7 @@
     return Number.isFinite(time) ? time : 0;
   }
 
-  function normalizeDecision(value) {
+  function normalize(value) {
     const allowed = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "duplicate", "delete"]);
     const decision = String(value?.decision || "");
     return {
@@ -215,40 +219,27 @@
   function shouldReplace(current, candidate) {
     if (String(current?.decision || "") === "delete" && String(candidate?.decision || "") !== "delete") return false;
     if (String(current?.decision || "") && !String(candidate?.decision || "")) return false;
-    const currentHasValue = hasReviewValue(current);
-    const candidateHasValue = hasReviewValue(candidate);
-    if (currentHasValue && !candidateHasValue) return false;
-    if (!currentHasValue && candidateHasValue) return true;
+    if (hasValue(current) && !hasValue(candidate)) return false;
+    if (!hasValue(current) && hasValue(candidate)) return true;
     return updatedAt(candidate?.updatedAt) >= updatedAt(current?.updatedAt);
   }
 
-  function mergeDecisions(remoteDecisions, localDecisions) {
+  function merge(remoteDecisions, localDecisions, knownRecords) {
+    const known = new Set(knownRecords.map((record) => record.review_id));
     const merged = {};
     Object.entries(remoteDecisions || {}).forEach(([reviewId, value]) => {
-      if (value && typeof value === "object" && hasReviewValue(value)) merged[reviewId] = normalizeDecision(value);
+      if (known.has(reviewId) && value && typeof value === "object" && hasValue(value)) merged[reviewId] = normalize(value);
     });
     Object.entries(localDecisions || {}).forEach(([reviewId, value]) => {
-      if (!value || typeof value !== "object" || !hasReviewValue(value)) return;
-      const candidate = normalizeDecision(value);
-      const current = merged[reviewId] || {};
-      if (shouldReplace(current, candidate)) merged[reviewId] = candidate;
+      if (!known.has(reviewId) || !value || typeof value !== "object" || !hasValue(value)) return;
+      const candidate = normalize(value);
+      if (shouldReplace(merged[reviewId] || {}, candidate)) merged[reviewId] = candidate;
     });
     return merged;
   }
 
-  function filterKnownDecisions(decisions, records) {
-    const known = new Set(records.map((record) => record.review_id));
-    const filtered = {};
-    Object.entries(decisions || {}).forEach(([reviewId, value]) => {
-      if (known.has(reviewId) && value && typeof value === "object" && hasReviewValue(value)) {
-        filtered[reviewId] = normalizeDecision(value);
-      }
-    });
-    return filtered;
-  }
-
-  async function loadRemoteProgress(base) {
-    const locators = uniqueLocators([
+  async function remoteProgress(base) {
+    const locators = unique([
       cfg.progressDropboxLatestJsonId,
       `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`,
       (cfg.progressDropboxFolderAlternates || []).map((folder) => `${String(folder || "").replace(/\/+$/g, "")}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`)
@@ -256,8 +247,8 @@
     let lastError = null;
     for (const locator of locators) {
       try {
-        const response = await dropboxDownload(locator);
-        const metadata = metadataFromDownload(response);
+        const response = await download(locator);
+        const metadata = downloadMetadata(response);
         const payload = await response.json();
         if (!payload || payload.queueIdentity !== cfg.queueIdentity || typeof payload.decisions !== "object") {
           throw new Error("Online progress does not match this protected queue.");
@@ -268,14 +259,14 @@
         if (!isLookupError(error)) throw error;
       }
     }
-    if (lastError) throw lastError;
-    return { payload: null, rev: "" };
+    throw lastError || new Error("Online progress could not be loaded before saving.");
   }
 
-  function buildTaggedRows(records, decisions) {
-    return records.map((record) => {
+  function buildPayload(knownRecords, decisions, previousExportedAt) {
+    const exportedAt = new Date().toISOString();
+    const tagged = knownRecords.map((record) => {
       const saved = decisions[record.review_id] || {};
-      if (!hasReviewValue(saved) || saved.decision === "delete") return null;
+      if (!hasValue(saved) || saved.decision === "delete") return null;
       return {
         queue_number: record.queue_number,
         filename: record.filename,
@@ -287,25 +278,20 @@
         dropbox_path: record.dropbox_path || ""
       };
     }).filter(Boolean);
-  }
-
-  function buildPayload(records, decisions, previousOnlineExportedAt) {
-    const exportedAt = new Date().toISOString();
-    const tagged = buildTaggedRows(records, decisions);
     const excluded = Object.values(decisions).filter((value) => value?.decision === "delete").length;
     return {
       schema: "MASICS_MARIO_ONLINE_REVIEW_PROGRESS_V1",
       queueIdentity: cfg.queueIdentity,
       queueVersion: cfg.queueVersion,
       exportedAt,
-      previousOnlineExportedAt: previousOnlineExportedAt || "",
+      previousOnlineExportedAt: previousExportedAt || "",
       source: "github-pages-cloud-viewer",
       reviewer: window.localStorage.getItem("masics_reviewer_name") || "Mario",
       userAgent: navigator.userAgent,
       url: location.href,
-      total: records.length,
+      total: knownRecords.length,
       reviewed: tagged.length,
-      pending: Math.max(0, records.length - tagged.length - excluded),
+      pending: Math.max(0, knownRecords.length - tagged.length - excluded),
       excluded,
       decisions,
       tagged,
@@ -313,28 +299,18 @@
     };
   }
 
-  function saveLocalProgress(payload) {
-    const localPayload = {
+  function saveLocal(payload) {
+    window.localStorage.setItem(progressKey, JSON.stringify({
       queueIdentity: cfg.queueIdentity,
       decisions: payload.decisions,
       exportedAt: payload.exportedAt
-    };
-    window.localStorage.setItem(progressKey, JSON.stringify(localPayload));
+    }));
   }
 
-  function putIndexedDbBackup(payload) {
+  function saveIndexedDb(payload) {
     return new Promise((resolve) => {
-      if (!window.indexedDB) {
-        resolve(false);
-        return;
-      }
-      let request;
-      try {
-        request = window.indexedDB.open(safetyDbName, 1);
-      } catch {
-        resolve(false);
-        return;
-      }
+      if (!window.indexedDB) return resolve(false);
+      const request = window.indexedDB.open(safetyDbName, 1);
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(safetyStoreName)) db.createObjectStore(safetyStoreName);
@@ -356,105 +332,64 @@
     });
   }
 
-  function getIndexedDbBackup() {
-    return new Promise((resolve) => {
-      if (!window.indexedDB) {
-        resolve(null);
-        return;
-      }
-      const request = window.indexedDB.open(safetyDbName, 1);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(safetyStoreName)) db.createObjectStore(safetyStoreName);
-      };
-      request.onerror = () => resolve(null);
-      request.onsuccess = () => {
-        const db = request.result;
-        const transaction = db.transaction(safetyStoreName, "readonly");
-        const getRequest = transaction.objectStore(safetyStoreName).get(cfg.queueIdentity);
-        getRequest.onsuccess = () => resolve(getRequest.result || null);
-        getRequest.onerror = () => resolve(null);
-        transaction.oncomplete = () => db.close();
-      };
-    });
-  }
-
-  function shouldCreateSnapshot(manualSave) {
+  function checkpointDue(manualSave) {
     if (manualSave) return true;
-    const previous = Date.parse(window.localStorage.getItem(lastSnapshotKey) || "");
-    return !Number.isFinite(previous) || Date.now() - previous >= SNAPSHOT_INTERVAL_MS;
+    const previous = Date.parse(window.localStorage.getItem(checkpointKey) || "");
+    return !Number.isFinite(previous) || Date.now() - previous >= CHECKPOINT_INTERVAL_MS;
   }
 
-  async function saveSafely(manualSave) {
-    if (!token()) throw new Error("Sign in with Dropbox before saving online.");
+  async function safeSave(manualSave) {
+    if (!authToken()) throw new Error("Sign in with Dropbox before saving online.");
     const button = $("save-online");
     if (button) button.disabled = true;
     setSaveStatus("Saving online with safety merge...");
 
     try {
-      const records = await loadManifestRecords();
-      const base = await resolvedProgressBase();
+      const knownRecords = await records();
+      const base = await progressBase();
       if (!base) throw new Error("Online progress folder is not configured.");
       const latestPath = `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`;
 
-      let lastError = null;
       for (let attempt = 1; attempt <= MAX_SAVE_ATTEMPTS; attempt += 1) {
         try {
-          const remote = await loadRemoteProgress(base);
-          const local = loadLocalProgress();
-          const merged = filterKnownDecisions(
-            mergeDecisions(remote.payload?.decisions || {}, local.decisions || {}),
-            records
-          );
-          const payload = buildPayload(records, merged, remote.payload?.exportedAt || "");
+          const remote = await remoteProgress(base);
+          const local = loadLocal();
+          const decisions = merge(remote.payload.decisions, local.decisions || {}, knownRecords);
+          const payload = buildPayload(knownRecords, decisions, remote.payload.exportedAt || "");
           const text = JSON.stringify(payload, null, 2);
 
-          saveLocalProgress(payload);
-          await putIndexedDbBackup(payload);
+          saveLocal(payload);
+          await saveIndexedDb(payload);
 
-          const updateMode = remote.rev
-            ? { ".tag": "update", update: remote.rev }
-            : { ".tag": "overwrite" };
-          await dropboxUpload(latestPath, text, updateMode);
+          const mode = remote.rev ? { ".tag": "update", update: remote.rev } : { ".tag": "overwrite" };
+          await upload(latestPath, text, mode);
 
-          let snapshotWarning = "";
-          if (shouldCreateSnapshot(manualSave)) {
+          let checkpointNote = "";
+          if (checkpointDue(manualSave)) {
             const stamp = payload.exportedAt.replace(/[:.]/g, "-");
-            const snapshotPath = `${base}/checkpoints/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`;
+            const checkpointPath = `${base}/MASICS_MARIO_REVIEW_CHECKPOINT_${stamp}.json`;
             try {
-              await dropboxUpload(snapshotPath, text, { ".tag": "add" });
-              window.localStorage.setItem(lastSnapshotKey, payload.exportedAt);
+              await upload(checkpointPath, text, { ".tag": "add" });
+              window.localStorage.setItem(checkpointKey, payload.exportedAt);
             } catch (error) {
-              snapshotWarning = ` Checkpoint backup failed: ${error.message || error}`;
+              checkpointNote = ` Latest progress is safe, but checkpoint creation failed: ${errorText(error)}`;
             }
           }
 
           const localTime = new Date(payload.exportedAt).toLocaleString();
-          setSaveStatus(`Saved online: ${localTime}. Reviewed ${payload.reviewed}; pending ${payload.pending}.${snapshotWarning}`);
+          setSaveStatus(`Saved online: ${localTime}. Reviewed ${payload.reviewed}; pending ${payload.pending}.${checkpointNote}`);
           setPageStatus(`Saved online safely. Reviewed: ${payload.reviewed}. Pending: ${payload.pending}. Excluded: ${payload.excluded}.`);
           return payload;
         } catch (error) {
-          lastError = error;
           if (!isConflictError(error) || attempt === MAX_SAVE_ATTEMPTS) throw error;
           setSaveStatus(`Another device saved first. Merging again (${attempt + 1}/${MAX_SAVE_ATTEMPTS})...`);
           await sleep(350 * attempt);
         }
       }
-      throw lastError || new Error("Online save did not complete.");
+      throw new Error("Online save did not complete.");
     } finally {
       if (button) button.disabled = false;
     }
-  }
-
-  function installRenderingContainment() {
-    if ($("masics-rendering-containment")) return;
-    const style = document.createElement("style");
-    style.id = "masics-rendering-containment";
-    style.textContent = `
-      .queue-list { contain: layout style paint; }
-      .queue-list > li { content-visibility: auto; contain-intrinsic-size: 52px; }
-    `;
-    document.head.appendChild(style);
   }
 
   document.addEventListener("click", (event) => {
@@ -468,9 +403,9 @@
       return;
     }
 
-    savePromise = saveSafely(Boolean(event.isTrusted))
+    savePromise = safeSave(Boolean(event.isTrusted))
       .catch((error) => {
-        const message = error?.message || "Online save failed.";
+        const message = errorText(error) || "Online save failed.";
         setSaveStatus(`SAVE FAILED: ${message}`);
         setPageStatus(`Online save failed. Stay on this record and try Save Online again. ${message}`);
       })
@@ -485,13 +420,5 @@
     event.returnValue = "A protected review save is still in progress.";
   });
 
-  window.MASICS_SAVE_SAFETY_RECOVER_LOCAL = async () => {
-    const payload = await getIndexedDbBackup();
-    if (!payload || payload.queueIdentity !== cfg.queueIdentity || typeof payload.decisions !== "object") return false;
-    saveLocalProgress(payload);
-    return true;
-  };
-
-  installRenderingContainment();
   window.MASICS_SAVE_SAFETY_VERSION = VERSION;
 })();
