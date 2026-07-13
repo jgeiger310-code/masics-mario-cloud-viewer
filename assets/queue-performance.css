@@ -1,0 +1,8 @@
+.queue-list {
+  contain: layout style paint;
+}
+
+.queue-list > li {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
+}
