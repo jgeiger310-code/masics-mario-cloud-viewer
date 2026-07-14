@@ -87,6 +87,7 @@
         <dl id="record-meta" class="record-meta compact-meta"></dl>
         <div class="progress-actions">
           <button id="export-progress">Export Progress</button>
+          <button id="export-missing-xlsx" class="primary" type="button">Download Missing Files XLSX</button>
           <label class="import-label">Import Progress<input id="import-progress" type="file" accept="application/json"></label>
           <button id="reset-progress">Reset Progress</button>
         </div>
@@ -95,7 +96,9 @@
   </main>
   <script src="assets/config.js?v=20260713-manifest-3838-1"></script>
   <script src="assets/auth-storage-fallback.js?v=20260709-storage-quota-2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/app.js?v=20260707-23"></script>
+  <script src="assets/export-missing-xlsx.js?v=20260714-1"></script>
   <script src="assets/decision-blank-guard.js?v=20260709-no-blank-revert-1"></script>
   <script src="assets/notes-count-as-reviewed.js?v=20260713-1"></script>
   <script src="assets/autosave-online-v3.js?v=20260713-autosave-online-v4"></script>
