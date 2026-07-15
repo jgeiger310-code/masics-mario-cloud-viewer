@@ -35,6 +35,7 @@ function extractFunction(source, name) {
 
 const app = read("assets/app.js");
 const saveMerge = read("assets/save-online-merge.js");
+const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
 const trackerReport = read("assets/tracker-report.js");
 
@@ -42,6 +43,8 @@ test("main viewer loads the 5844 save guard and not the duplicate autosave shim"
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260715-manifest-5844-1/);
   assert.match(html, /assets\/save-online-merge\.js\?v=20260715-5844-save-guard-1/);
+  assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260715-missing-export-all-tags-1/);
+  assert.match(html, /Download All Missing Tags XLSX/);
   assert.doesNotMatch(html, /autosave-online-v3\.js/);
   assert.match(html, /updates the spreadsheet backup/);
 });
@@ -124,6 +127,32 @@ test("marked csv contains reviewed, excluded, and notes rows only", () => {
   assert.equal(context.marked[1].excluded, true);
   assert.equal(context.marked[2].notes, "notes only");
   assert.match(context.csvText, /"needs, quote"/);
+});
+
+test("missing xlsx export includes every file tagged missing and only missing", () => {
+  const code = [
+    extractFunction(missingExport, "isMissingDecision"),
+    extractFunction(missingExport, "missingRows"),
+    `const manifest = { records: [
+      { queue_number: 3, filename: "third.png", review_id: "third", file_type: "png", dropbox_path: "/third.png" },
+      { queue_number: 1, filename: "first.pdf", review_id: "first", file_type: "pdf", dropbox_path: "/first.pdf" },
+      { queue_number: 2, filename: "second.jpg", review_id: "second", file_type: "jpg", dropbox_path: "/second.jpg" },
+      { queue_number: 4, filename: "fourth.jpg", review_id: "fourth", file_type: "jpg", dropbox_path: "/fourth.jpg" }
+    ] };
+    const progress = { decisions: {
+      first: { decision: " Missing ", notes: "case-insensitive", updatedAt: "2026-07-15T01:00:00Z" },
+      second: { decision: "missing", notes: "plain", updatedAt: "2026-07-15T02:00:00Z" },
+      third: { decision: "responsive", notes: "not exported", updatedAt: "2026-07-15T03:00:00Z" },
+      fourth: { decision: "delete", notes: "not exported", updatedAt: "2026-07-15T04:00:00Z" }
+    } };
+    globalThis.rows = missingRows(manifest, progress);`
+  ].join("\n");
+  const context = {};
+  vm.runInNewContext(code, context);
+  assert.equal(context.rows.length, 2);
+  assert.equal(context.rows.map((row) => row["Review ID"]).join(","), "first,second");
+  assert.equal(context.rows.map((row) => row["Queue #"]).join(","), "1,2");
+  assert.equal(context.rows[0]["Decision"], "Missing");
 });
 
 test("tracker sees marked reviewed csv backups", () => {

@@ -6,8 +6,10 @@
   const TOKEN_KEY = "masics_access_token";
   const AUTO_EXPORT_KEY = "masics_auto_export_missing_xlsx";
   const EXPORT_QUERY = "export_missing";
+  const VERSION = "20260715-missing-export-all-tags-1";
 
   if (!cfg) return;
+  window.MASICS_MISSING_EXPORT_VERSION = VERSION;
 
   function uniqueLocators(values) {
     const seen = new Set();
@@ -82,7 +84,7 @@
   function missingRows(manifest, progress) {
     return manifest.records.map((record) => {
       const saved = progress.decisions[record.review_id] || {};
-      if (String(saved.decision || "") !== "missing") return null;
+      if (!isMissingDecision(saved.decision)) return null;
       return {
         "Queue #": Number(record.queue_number) || "",
         "File name": String(record.filename || ""),
@@ -94,6 +96,10 @@
         "Decision": "Missing"
       };
     }).filter(Boolean).sort((a, b) => Number(a["Queue #"]) - Number(b["Queue #"]));
+  }
+
+  function isMissingDecision(decision) {
+    return String(decision || "").trim().toLowerCase() === "missing";
   }
 
   function exportWorkbook(rows, progress) {
@@ -212,4 +218,23 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wireExport, { once: true });
   else wireExport();
+
+  window.MASICS_MISSING_EXPORT_SELF_TEST = () => ({
+    version: VERSION,
+    includesOnlyMissingRows: missingRows({
+      records: [
+        { queue_number: 2, filename: "b.pdf", review_id: "b", file_type: "pdf", dropbox_path: "/b.pdf" },
+        { queue_number: 1, filename: "a.jpg", review_id: "a", file_type: "jpg", dropbox_path: "/a.jpg" },
+        { queue_number: 3, filename: "c.png", review_id: "c", file_type: "png", dropbox_path: "/c.png" }
+      ]
+    }, {
+      decisions: {
+        a: { decision: " Missing ", notes: "case and whitespace", updatedAt: "2026-07-15T01:00:00Z" },
+        b: { decision: "missing", notes: "plain", updatedAt: "2026-07-15T02:00:00Z" },
+        c: { decision: "responsive", notes: "not missing", updatedAt: "2026-07-15T03:00:00Z" }
+      }
+    }).map((row) => row["Review ID"]).join(",") === "a,b",
+    writesXlsx: /writeFile/.test(exportWorkbook.toString()),
+    autoExportQuerySupported: EXPORT_QUERY === "export_missing"
+  });
 })();
