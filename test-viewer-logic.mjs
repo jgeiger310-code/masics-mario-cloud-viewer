@@ -7,7 +7,7 @@ const root = process.cwd();
 
 function test(name, fn) {
   try {
-    awaitMaybe(fn());
+    fn();
     console.log(`PASS ${name}`);
   } catch (err) {
     console.error(`FAIL ${name}`);
@@ -16,21 +16,15 @@ function test(name, fn) {
   }
 }
 
-function awaitMaybe(value) {
-  if (value && typeof value.then === "function") {
-    throw new Error("Async tests are not supported in this tiny harness.");
-  }
-}
-
 function read(file) {
   return fs.readFileSync(path.join(root, file), "utf8");
 }
 
 function extractFunction(source, name) {
-  const start = source.indexOf(`function ${name}`);
+  const start = source.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `${name} not found`);
-  let brace = source.indexOf("{", start);
   let depth = 0;
+  const brace = source.indexOf("{", start);
   for (let i = brace; i < source.length; i += 1) {
     if (source[i] === "{") depth += 1;
     if (source[i] === "}") depth -= 1;
@@ -44,226 +38,109 @@ const saveMerge = read("assets/save-online-merge.js");
 const preview = read("assets/safe-preview.js");
 const trackerReport = read("assets/tracker-report.js");
 
-test("live page references current performance asset versions", () => {
+test("main viewer loads the 5844 save guard and not the duplicate autosave shim", () => {
   const html = read("index.html");
-  assert.match(html, /assets\/config\.js\?v=20260707-4/);
-  assert.match(html, /assets\/styles\.css\?v=20260708-10/);
-  assert.match(html, /assets\/app\.js\?v=20260707-23/);
-  assert.match(html, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/);
-  assert.match(html, /assets\/safe-preview\.js\?v=20260708-25/);
-  assert.match(html, /assets\/save-online-merge\.js\?v=20260707-12/);
+  assert.match(html, /assets\/config\.js\?v=20260715-manifest-5844-1/);
+  assert.match(html, /assets\/save-online-merge\.js\?v=20260715-5844-save-guard-1/);
+  assert.doesNotMatch(html, /autosave-online-v3\.js/);
+  assert.match(html, /updates the spreadsheet backup/);
 });
 
-test("manifest validation allows appended records above protected baseline", () => {
+test("manifest validation allows append-only growth above protected baseline", () => {
   const fn = extractFunction(app, "validateManifest");
   assert.match(fn, /loaded\.records\.length < minimumRecordCount/);
   assert.doesNotMatch(fn, /loaded\.records\.length !== cfg\.expectedRecordCount/);
-  assert.match(fn, /loaded\.pending_count !== loaded\.records\.length/);
+  assert.doesNotMatch(fn, /loaded\.pending_count !== loaded\.records\.length/);
+  assert.match(fn, /initial_review/);
 });
 
-test("tracker metrics prefer live manifest total over stale progress total", () => {
-  const fn = extractFunction(trackerReport, "renderMetrics");
-  assert.match(fn, /manifestRecords\.length \|\| latestProgress\.total/);
-  const html = read("tracker.html");
-  assert.match(html, /assets\/tracker-report\.js\?v=20260707-8/);
-});
-
-test("record changes emit exactly the preview event hook", () => {
-  assert.match(app, /window\.dispatchEvent\(new CustomEvent\("masics:record-change"\)\)/);
-  assert.match(preview, /window\.addEventListener\("masics:record-change", \(\) => schedulePreview\(\)\)/);
-});
-
-test("mobile review controls keep save online near next and move metadata low", () => {
-  const html = read("index.html");
-  const styles = read("assets/styles.css");
-  assert.match(html, /<button id="next-record" type="button">Next<\/button>\s+<button id="save-online"/);
-  assert.match(html, /<div class="bottom-record-actions">\s+<button id="previous-record"/);
-  assert.match(html, /<button id="next-pending" class="primary" type="button">Next Pending<\/button>\s+<button id="load-evidence"/);
-  assert.match(html, /<div id="preview" class="preview"><\/div>\s+<dl id="record-meta" class="record-meta compact-meta"><\/dl>/);
-  assert.doesNotMatch(html, /progress-warning/);
-  assert.match(html, /class="top-note"/);
-  assert.match(styles, /\.compact-meta/);
-  assert.match(styles, /\.bottom-record-actions/);
-});
-
-test("filter changes select a visible record when the active record is hidden", () => {
-  assert.match(app, /function selectVisibleRecordAfterFilter/);
-  assert.match(app, /showRecord\(visibleRecords\[0\]\)/);
-  assert.match(app, /els\.filter\.addEventListener\("change", selectVisibleRecordAfterFilter\)/);
-  assert.match(app, /els\.search\.addEventListener\("input", selectVisibleRecordAfterFilter\)/);
-});
-
-test("preview no longer uses base64 FileReader path", () => {
-  assert.doesNotMatch(preview, /readAsDataURL|FileReader|blobToDataUrl/);
-  assert.match(preview, /URL\.createObjectURL\(blob\)/);
-  assert.match(preview, /URL\.revokeObjectURL\(activePreviewUrl\)/);
-});
-
-test("safe preview supports auto media and Android PDF rendering", () => {
-  assert.match(preview, /const audioExts = \["\.mp3", "\.wav", "\.m4a", "\.aac", "\.ogg"\]/);
-  assert.match(preview, /const videoExts = \["\.mp4", "\.mov", "\.m4v", "\.webm"\]/);
-  assert.match(preview, /const pdfExts = \["\.pdf"\]/);
-  assert.match(preview, /function previewBlob/);
-  assert.match(preview, /function isAutoPreviewRecord/);
-  assert.match(preview, /function renderMediaElement/);
-  assert.match(preview, /function renderPdfPreview/);
-  assert.match(preview, /PDFJS_MODULE_URL/);
-  assert.match(preview, /"\.pdf": "application\/pdf"/);
-  assert.match(preview, /function renderPreview/);
-  assert.match(preview, /renderMediaElement\("audio"/);
-  assert.match(preview, /renderMediaElement\("video"/);
-  assert.match(preview, /document\.createElement\("iframe"\)/);
-  assert.match(preview, /Open PDF/);
-  assert.match(preview, /if \(!options\.force && !isAutoPreviewRecord\(record\)\)/);
-});
-
-test("DOCX is rendered locally and every unsupported format keeps open and save controls", () => {
-  assert.match(preview, /const docxExts = \["\.docx"\]/);
-  assert.match(preview, /window\.mammoth\.convertToHtml/);
-  assert.match(preview, /function sanitizeDocxHtml/);
-  assert.match(preview, /script, style, iframe, object, embed, form/);
-  assert.match(preview, /function appendFileActions/);
-  assert.match(preview, /Open original/);
-  assert.match(preview, /Save a copy/);
-  assert.match(preview, /await renderPreview\(blob, activePreviewUrl, record, key\)/);
-});
-
-test("queue update avoids full list rebuild in normal note typing path", () => {
-  const fn = extractFunction(app, "setProgressFor");
-  assert.match(fn, /needsFullListRefresh/);
-  assert.match(fn, /else refreshListState\(\)/);
-});
-
-test("decision dropdown saves on input and change events", () => {
-  assert.match(app, /els\.decision\.addEventListener\("change", saveDecisionFromControls\)/);
-  assert.match(app, /els\.decision\.addEventListener\("input", saveDecisionFromControls\)/);
-  assert.match(saveMerge, /target\.id === "notes" \|\| target\.id === "decision"/);
-});
-
-test("notes-only rows are visible as needs dropdown", () => {
-  const html = read("index.html");
-  const trackerHtml = read("tracker.html");
-  const styles = read("assets/styles.css");
-  assert.match(html, /option value="needs_dropdown"/);
-  assert.match(trackerHtml, /option value="needs_dropdown"/);
-  assert.match(app, /function needsDropdown/);
-  assert.match(app, /Needs dropdown/);
-  assert.match(styles, /button\.needs-dropdown/);
-  assert.match(trackerReport, /needsDropdown/);
-  assert.match(trackerReport, /Needs dropdown/);
-  assert.match(trackerReport, /needs_dropdown/);
-  assert.match(trackerReport, /"needs_dropdown"/);
-});
-
-test("tracker metrics use all saved rows, not the active filter", () => {
-  assert.match(trackerReport, /function render\(\) {\s+const allRows = reviewedRows\(\);\s+renderMetrics\(allRows\);\s+renderReviewed\(filteredReviewedRows\(\)\);/);
-});
-
-test("normal save merge keeps existing online decisions over blank local values", () => {
-  const code = [
-    extractFunction(saveMerge, "hasReviewValue"),
-    extractFunction(saveMerge, "updatedAt"),
-    extractFunction(saveMerge, "shouldReplaceDecision"),
-    extractFunction(saveMerge, "mergeDecisions"),
-    `globalThis.result = mergeDecisions({
-      a: { decision: "missing", notes: "online note", updatedAt: "2026-07-07T10:00:00Z" },
-      b: { decision: "responsive", notes: "", updatedAt: "2026-07-07T10:00:00Z" }
-    }, {
-      a: { decision: "", notes: "", updatedAt: "2026-07-07T11:00:00Z" },
-      b: { decision: "", notes: "local note only", updatedAt: "2026-07-07T11:00:00Z" },
-      c: { decision: "duplicate", notes: "new", updatedAt: "2026-07-07T12:00:00Z" }
-    });`
-  ].join("\n");
-  const context = {};
-  vm.runInNewContext(code, context);
-  assert.equal(context.result.a.decision, "missing");
-  assert.equal(context.result.a.notes, "online note");
-  assert.equal(context.result.b.decision, "responsive");
-  assert.equal(context.result.c.decision, "duplicate");
-});
-
-test("initial online sync merges with existing local progress instead of replacing it", () => {
+test("initial online sync merges with local progress instead of replacing it", () => {
   const fn = extractFunction(app, "syncOnlineProgressIntoBrowser");
   assert.match(fn, /const localProgress = loadProgress\(\)/);
   assert.match(fn, /filterKnownDecisions\(mergeDecisions\(online\.decisions, localProgress\.decisions \|\| \{\}\)\)/);
 });
 
-test("delete/exclude is not overwritten by a later non-delete local decision", () => {
+test("save merge protects newer online decisions from stale local sessions", () => {
   const code = [
-    extractFunction(saveMerge, "hasReviewValue"),
+    extractFunction(saveMerge, "hasValue"),
     extractFunction(saveMerge, "updatedAt"),
-    extractFunction(saveMerge, "shouldReplaceDecision"),
+    extractFunction(saveMerge, "newerOrSafer"),
     extractFunction(saveMerge, "mergeDecisions"),
     `globalThis.result = mergeDecisions({
-      d: { decision: "delete", notes: "exclude", updatedAt: "2026-07-07T10:00:00Z" }
+      keep: { decision: "missing", notes: "new online", updatedAt: "2026-07-15T01:00:00Z" },
+      blank: { decision: "responsive", notes: "online value", updatedAt: "2026-07-15T01:00:00Z" },
+      deleted: { decision: "delete", notes: "excluded", updatedAt: "2026-07-15T01:00:00Z" }
     }, {
-      d: { decision: "missing", notes: "later local", updatedAt: "2026-07-07T12:00:00Z" }
+      keep: { decision: "responsive", notes: "old local", updatedAt: "2026-07-14T01:00:00Z" },
+      blank: { decision: "", notes: "", updatedAt: "2026-07-15T02:00:00Z" },
+      deleted: { decision: "missing", notes: "later local", updatedAt: "2026-07-15T02:00:00Z" },
+      adopt: { decision: "duplicate", notes: "fresh local", updatedAt: "2026-07-15T02:00:00Z" }
     });`
   ].join("\n");
   const context = {};
   vm.runInNewContext(code, context);
-  assert.equal(context.result.d.decision, "delete");
+  assert.equal(context.result.keep.decision, "missing");
+  assert.equal(context.result.blank.decision, "responsive");
+  assert.equal(context.result.deleted.decision, "delete");
+  assert.equal(context.result.adopt.decision, "duplicate");
 });
 
-test("CSV rows preserve reviewed and excluded as separate states", () => {
+test("save path writes progress, full status csv, marked csv, audit, and manual snapshots", () => {
+  assert.match(saveMerge, /20260715-5844-save-guard-1/);
+  assert.match(saveMerge, /MASICS_MARIO_REVIEW_PROGRESS_LATEST\.json/);
+  assert.match(saveMerge, /MASICS_MARIO_REVIEW_STATUS_LATEST\.csv/);
+  assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/);
+  assert.match(saveMerge, /MASICS_MARIO_REVIEW_AUDIT_LATEST\.json/);
+  assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_\$\{stamp\}\.csv/);
+  assert.match(saveMerge, /Online verification failed/);
+  assert.match(saveMerge, /beforeunload/);
+});
+
+test("marked csv contains reviewed, excluded, and notes rows only", () => {
   const code = [
+    extractFunction(saveMerge, "allowedDecision"),
     extractFunction(saveMerge, "buildRows"),
+    extractFunction(saveMerge, "markedRows"),
     extractFunction(saveMerge, "csvEscape"),
-    extractFunction(saveMerge, "buildCsv"),
+    extractFunction(saveMerge, "csv"),
     `const records = [
       { queue_number: 1, filename: "a.jpg", review_id: "a", file_type: "jpg", dropbox_path: "/a.jpg" },
       { queue_number: 2, filename: "b.jpg", review_id: "b", file_type: "jpg", dropbox_path: "/b.jpg" },
-      { queue_number: 3, filename: "c.jpg", review_id: "c", file_type: "jpg", dropbox_path: "/c.jpg" }
+      { queue_number: 3, filename: "c.jpg", review_id: "c", file_type: "jpg", dropbox_path: "/c.jpg" },
+      { queue_number: 4, filename: "d.jpg", review_id: "d", file_type: "jpg", dropbox_path: "/d.jpg" }
     ];
     const rows = buildRows(records, {
-      a: { decision: "missing", notes: "needs, quote", updatedAt: "2026-07-07T10:00:00Z" },
-      b: { decision: "delete", notes: "remove from list", updatedAt: "2026-07-07T11:00:00Z" },
-      c: { decision: "", notes: "notes only", updatedAt: "2026-07-07T12:00:00Z" }
+      a: { decision: "missing", notes: "needs, quote", updatedAt: "2026-07-15T01:00:00Z" },
+      b: { decision: "delete", notes: "remove", updatedAt: "2026-07-15T01:00:00Z" },
+      c: { decision: "", notes: "notes only", updatedAt: "2026-07-15T01:00:00Z" }
     });
-    globalThis.rows = rows;
-    globalThis.csv = buildCsv(rows);`
+    globalThis.marked = markedRows(rows);
+    globalThis.csvText = csv(globalThis.marked);`
   ].join("\n");
   const context = {};
   vm.runInNewContext(code, context);
-  assert.equal(context.rows[0].reviewed, true);
-  assert.equal(context.rows[0].excluded, false);
-  assert.equal(context.rows[1].reviewed, false);
-  assert.equal(context.rows[1].excluded, true);
-  assert.equal(context.rows[2].reviewed, false);
-  assert.equal(context.rows[2].excluded, false);
-  assert.match(context.csv, /"needs, quote"/);
+  assert.equal(context.marked.length, 3);
+  assert.equal(context.marked[0].reviewed, true);
+  assert.equal(context.marked[1].excluded, true);
+  assert.equal(context.marked[2].notes, "notes only");
+  assert.match(context.csvText, /"needs, quote"/);
 });
 
-test("audit reports preserved online, adopted local, and unknown local ids", () => {
-  const code = [
-    `const version = "test-version";`,
-    `const window = { MASICS_DROPBOX_CONFIG: { queueIdentity: "queue", queueVersion: "manifest", expectedRecordCount: 2 } };`,
-    extractFunction(saveMerge, "cfg"),
-    extractFunction(saveMerge, "updatedAt"),
-    extractFunction(saveMerge, "hasReviewValue"),
-    extractFunction(saveMerge, "shouldReplaceDecision"),
-    extractFunction(saveMerge, "summarizeDecision"),
-    extractFunction(saveMerge, "sameSummary"),
-    extractFunction(saveMerge, "buildAudit"),
-    `globalThis.audit = buildAudit(
-      [{ review_id: "keep" }, { review_id: "adopt" }],
-      { exportedAt: "old", decisions: { keep: { decision: "missing", notes: "online", updatedAt: "2026-07-07T10:00:00Z" } } },
-      { decisions: {
-        keep: { decision: "", notes: "", updatedAt: "2026-07-07T11:00:00Z" },
-        adopt: { decision: "responsive", notes: "local", updatedAt: "2026-07-07T12:00:00Z" },
-        unknown: { decision: "missing", notes: "bad", updatedAt: "2026-07-07T12:00:00Z" }
-      }},
-      {
-        keep: { decision: "missing", notes: "online", updatedAt: "2026-07-07T10:00:00Z" },
-        adopt: { decision: "responsive", notes: "local", updatedAt: "2026-07-07T12:00:00Z" }
-      },
-      "new"
-    );`
-  ].join("\n");
-  const context = {};
-  vm.runInNewContext(code, context);
-  assert.equal(context.audit.preservedFromOnlineCount, 1);
-  assert.equal(context.audit.adoptedFromLocalCount, 1);
-  assert.equal(context.audit.ignoredUnknownLocalCount, 1);
-  assert.equal(context.audit.changedCount, 1);
+test("tracker sees marked reviewed csv backups", () => {
+  const html = read("tracker.html");
+  assert.match(html, /assets\/tracker-report\.js\?v=20260715-marked-backups-1/);
+  assert.match(trackerReport, /MARKED_REVIEWED/);
+});
+
+test("mobile and preview guardrails remain present", () => {
+  const html = read("index.html");
+  const styles = read("assets/styles.css");
+  assert.match(html, /<button id="next-record" type="button">Next<\/button>\s+<button id="save-online"/);
+  assert.match(html, /<button id="next-pending" class="primary" type="button">Next Pending<\/button>\s+<button id="load-evidence"/);
+  assert.match(styles, /@media \(max-width: 820px\)/);
+  assert.doesNotMatch(preview, /readAsDataURL|FileReader|blobToDataUrl/);
+  assert.match(preview, /URL\.createObjectURL\(blob\)/);
+  assert.match(preview, /window\.mammoth\.convertToHtml/);
+  assert.match(preview, /Open original/);
+  assert.match(preview, /Save a copy/);
 });

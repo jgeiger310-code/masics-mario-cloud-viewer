@@ -3,7 +3,7 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const VERSION = "20260709-visible-record-save-1";
+  const VERSION = "20260715-5844-save-guard-1";
   let timer = 0;
   let inFlight = false;
   let queued = false;
@@ -172,10 +172,16 @@
     return Boolean(value && (String(value.decision || "") || String(value.notes || "")));
   }
 
+  function updatedAt(value) {
+    const time = Date.parse(value?.updatedAt || "");
+    return Number.isFinite(time) ? time : 0;
+  }
+
   function newerOrSafer(current, candidate) {
     if (String(current?.decision || "") === "delete" && String(candidate?.decision || "") !== "delete") return current;
     if (String(current?.decision || "") && !String(candidate?.decision || "")) return current;
     if (hasValue(current) && !hasValue(candidate)) return current;
+    if (hasValue(current) && hasValue(candidate) && updatedAt(candidate) < updatedAt(current)) return current;
     return candidate;
   }
 
@@ -203,6 +209,10 @@
         dropbox_path: record.dropbox_path || ""
       };
     });
+  }
+
+  function markedRows(rows) {
+    return rows.filter((row) => row.reviewed || row.excluded || String(row.notes || "").trim());
   }
 
   function csvEscape(value) {
@@ -301,8 +311,11 @@
       };
 
       const progressText = JSON.stringify(progress, null, 2);
+      const statusCsv = csv(rows);
+      const markedCsv = csv(markedRows(rows));
       await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, progressText, "overwrite");
-      await upload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, csv(rows), "overwrite");
+      await upload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, statusCsv, "overwrite");
+      await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_LATEST.csv`, markedCsv, "overwrite");
 
       let verified = true;
       if (current && controls.decision) {
@@ -318,13 +331,14 @@
       if (!isAuto) {
         await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, progressText, "add");
         await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, audit, "add");
+        await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_${stamp}.csv`, markedCsv, "add");
       }
 
       saveLocal({ queueIdentity: cfg().queueIdentity, decisions, exportedAt });
       window.localStorage.setItem(stampKey("last_online_sync_at"), exportedAt);
       const recordText = current ? `#${current.queue_number} ${current.filename}` : "current progress";
       setSaveStatus(`${isAuto ? "Auto-saved" : "Saved"} and verified online: ${recordText}. Reviewed ${reviewed}, pending ${progress.pending}, excluded ${excluded}.`);
-      setTopStatus(`Saved and verified online. Reviewed: ${reviewed}. Pending: ${progress.pending}. Excluded: ${excluded}.`);
+      setTopStatus(`Saved and verified online. Reviewed: ${reviewed}. Pending: ${progress.pending}. Excluded: ${excluded}. Marked spreadsheet backup updated.`);
     } finally {
       if (button) button.disabled = false;
     }
@@ -374,11 +388,18 @@
     if (target.id === "decision") schedule("decision");
   }, true);
 
+  window.addEventListener("beforeunload", (event) => {
+    if (!timer && !inFlight) return;
+    event.preventDefault();
+    event.returnValue = "A review save is still being verified online.";
+  });
+
   window.MASICS_ONLINE_SAVE_MERGE_SELF_TEST = () => ({
     version: VERSION,
     savesVisibleRecordFromPage: /currentRecord\(records\)/.test(saveNow.toString()),
     verifiesByReadingDropboxBack: /Online verification failed/.test(saveNow.toString()),
     autoRequiresDropdown: /!controls\.decision/.test(schedule.toString()),
-    manualSnapshotsOnly: /if \(!isAuto\)/.test(saveNow.toString())
+    manualSnapshotsOnly: /if \(!isAuto\)/.test(saveNow.toString()),
+    writesMarkedReviewedCsv: /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/.test(saveNow.toString())
   });
 })();

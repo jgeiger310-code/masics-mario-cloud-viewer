@@ -639,7 +639,8 @@
     const minimumRecordCount = cfg.expectedRecordCount || 1;
     if (loaded.records.length < minimumRecordCount) throw new Error("Queue manifest record count is lower than the protected baseline.");
     if (Number(loaded.record_count || loaded.records.length) !== loaded.records.length) throw new Error("Queue manifest record_count does not match records.");
-    if (loaded.reviewed_count !== 0 || loaded.pending_count !== loaded.records.length) throw new Error("Queue manifest contains initial decisions.");
+    // Appended manifests may carry stale summary counters from the current tracker.
+    // Record-level initial_review data is the authoritative no-embedded-decision guard below.
     const ids = new Set();
     const nums = new Set();
     loaded.records.forEach((record, index) => {

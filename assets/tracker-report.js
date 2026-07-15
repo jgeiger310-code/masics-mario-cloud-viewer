@@ -14,7 +14,7 @@
   let refreshTimer = 0;
   let loadInFlight = false;
 
-  window.MASICS_TRACKER_REPORT_VERSION = "20260709-duplicates-1";
+  window.MASICS_TRACKER_REPORT_VERSION = "20260715-marked-backups-1";
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -245,7 +245,7 @@
       manifestRecords = Array.isArray(manifest?.records) ? manifest.records : [];
       latestProgress = progress || {};
       latestAudit = audit || {};
-      backupEntries = entries.filter((entry) => /^MASICS_MARIO_REVIEW_(PROGRESS|AUDIT)_.+\.(json|csv)$/i.test(entry.name || ""));
+      backupEntries = entries.filter((entry) => /^MASICS_MARIO_(REVIEW_(PROGRESS|AUDIT)|MARKED_REVIEWED)_.+\.(json|csv)$/i.test(entry.name || ""));
       render();
       setStatus(`Loaded tracker. Last save: ${formatTime(latestProgress.exportedAt)}. Auto-refresh is on.`);
     } finally {
