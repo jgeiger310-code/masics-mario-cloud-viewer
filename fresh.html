@@ -12,7 +12,9 @@
 <body>
   <p>Opening the latest MASICS viewer...</p>
   <script>
-    const target = new URL("./", window.location.href);
+    const current = new URL(window.location.href);
+    const target = new URL("./", current);
+    current.searchParams.forEach((value, key) => target.searchParams.set(key, value));
     target.searchParams.set("fresh", Date.now().toString());
     window.location.replace(target.toString());
   </script>
