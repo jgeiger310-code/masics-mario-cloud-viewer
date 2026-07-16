@@ -4,8 +4,8 @@
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const PDFJS_DIST_VERSION = "6.1.200";
-  const PDFJS_MODULE_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_DIST_VERSION}/legacy/build/pdf.mjs`;
-  const PDFJS_WORKER_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_DIST_VERSION}/legacy/build/pdf.worker.mjs`;
+  const PDFJS_MODULE_URL = `./assets/vendor/pdf.mjs?v=${PDFJS_DIST_VERSION}`;
+  const PDFJS_WORKER_URL = `./assets/vendor/pdf.worker.mjs?v=${PDFJS_DIST_VERSION}`;
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
   const pdfExts = [".pdf"];
   const audioExts = [".mp3", ".wav", ".m4a", ".aac", ".ogg"];
@@ -14,6 +14,8 @@
   const docxExts = [".docx"];
   const officeExts = [".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".odt", ".ods", ".odp", ".rtf"];
   const maxDocxPreviewBytes = 50 * 1024 * 1024;
+  const maxAutoPreviewBytes = Number(window.MASICS_MAX_AUTO_PREVIEW_BYTES || 25 * 1024 * 1024);
+  const maxInitialPdfPages = Number(window.MASICS_MAX_INITIAL_PDF_PAGES || 5);
   const previewTypes = {
     ".pdf": "application/pdf",
     ".jpg": "image/jpeg",
@@ -42,6 +44,7 @@
   let previewInFlight = false;
   let previewQueued = false;
   let activePreviewUrl = "";
+  let activePreviewAbortController = null;
   let pdfJsPromise = null;
 
   window.MASICS_SAFE_PREVIEW_VERSION = "20260709-docx-auto-1";
@@ -107,9 +110,10 @@
     return new Blob([blob], { type });
   }
 
-  async function dropboxDownload(locator) {
+  async function dropboxDownload(locator, signal = null) {
     const response = await fetch(DROPBOX_CONTENT + "files/download", {
       method: "POST",
+      signal,
       headers: {
         "Authorization": `Bearer ${token()}`,
         "Dropbox-API-Arg": JSON.stringify({ path: locator })
@@ -122,11 +126,11 @@
     return response;
   }
 
-  async function downloadFirst(locators) {
+  async function downloadFirst(locators, signal = null) {
     let lastError = null;
     for (const locator of unique(locators)) {
       try {
-        return await dropboxDownload(locator);
+        return await dropboxDownload(locator, signal);
       } catch (err) {
         lastError = err;
         if (!/missing|moved|not_found|lookup/i.test(String(err.message || ""))) throw err;
@@ -138,6 +142,12 @@
   function releasePreviewUrl() {
     if (activePreviewUrl) URL.revokeObjectURL(activePreviewUrl);
     activePreviewUrl = "";
+  }
+
+  function cancelActivePreview() {
+    if (activePreviewAbortController) activePreviewAbortController.abort();
+    activePreviewAbortController = null;
+    releasePreviewUrl();
   }
 
   async function loadManifest() {
@@ -325,11 +335,35 @@
       const pdf = await task.promise;
       if (expectedKey && selectedKey() !== expectedKey) return { statusMessage: "Preview changed before PDF finished rendering." };
 
-      note.textContent = `${record.filename} rendered in-page (${pdf.numPages} page${pdf.numPages === 1 ? "" : "s"}). No file was downloaded.`;
-      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-        if (expectedKey && selectedKey() !== expectedKey) break;
-        const page = await pdf.getPage(pageNumber);
-        await renderPdfPage(page, pages, pageNumber);
+      let renderedPages = 0;
+      async function renderThrough(limit) {
+        for (let pageNumber = renderedPages + 1; pageNumber <= Math.min(limit, pdf.numPages); pageNumber += 1) {
+          if (expectedKey && selectedKey() !== expectedKey) break;
+          const page = await pdf.getPage(pageNumber);
+          await renderPdfPage(page, pages, pageNumber);
+          renderedPages = pageNumber;
+        }
+      }
+      note.textContent = `${record.filename} rendered in-page (${pdf.numPages} page${pdf.numPages === 1 ? "" : "s"}). Showing the first ${Math.min(maxInitialPdfPages, pdf.numPages)} page${Math.min(maxInitialPdfPages, pdf.numPages) === 1 ? "" : "s"} to protect browser memory.`;
+      await renderThrough(maxInitialPdfPages);
+      if (renderedPages < pdf.numPages) {
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "preview-open";
+        const label = () => `Load ${Math.min(maxInitialPdfPages, pdf.numPages - renderedPages)} more PDF page${Math.min(maxInitialPdfPages, pdf.numPages - renderedPages) === 1 ? "" : "s"}`;
+        more.textContent = label();
+        more.addEventListener("click", async () => {
+          more.disabled = true;
+          await renderThrough(renderedPages + maxInitialPdfPages);
+          if (renderedPages < pdf.numPages) {
+            more.disabled = false;
+            more.textContent = label();
+          } else {
+            more.remove();
+            note.textContent = `${record.filename} fully rendered in-page (${pdf.numPages} page${pdf.numPages === 1 ? "" : "s"}).`;
+          }
+        });
+        shell.appendChild(more);
       }
       return { statusMessage: "PDF preview rendered in-page. No file was downloaded." };
     } catch (err) {
@@ -421,8 +455,16 @@
       }
 
       status.textContent = isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : isDocxRecord(record) ? "Loading DOCX preview from Dropbox..." : "Loading evidence preview from Dropbox...";
+      const recordSize = Number(record.file_size || record.size || 0);
+      if (!options.force && recordSize > maxAutoPreviewBytes) {
+        showNoDownloadMessage(record);
+        status.textContent = `Auto-preview skipped because this file is larger than ${Math.round(maxAutoPreviewBytes / 1024 / 1024)} MB. Press Preview Evidence to load it intentionally.`;
+        return;
+      }
       const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
-      const response = await downloadFirst(locators);
+      cancelActivePreview();
+      activePreviewAbortController = new AbortController();
+      const response = await downloadFirst(locators, activePreviewAbortController.signal);
       const blob = previewBlob(await response.blob(), record);
       activePreviewUrl = URL.createObjectURL(blob);
       if (key !== selectedKey()) return;
@@ -455,7 +497,7 @@
   }, true);
 
   window.addEventListener("masics:record-change", () => schedulePreview());
-  window.addEventListener("pagehide", releasePreviewUrl);
+  window.addEventListener("pagehide", cancelActivePreview);
 
   window.MASICS_SAFE_PREVIEW_SELF_TEST = () => ({
     version: window.MASICS_SAFE_PREVIEW_VERSION,
@@ -464,6 +506,10 @@
     pptxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.pptx" }),
     xlsxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.xlsx" }),
     onlyActiveRecordHasDownloadPath: /const record = activeRecordFrom\(allRecords\)/.test(previewActiveRecord.toString()) && !/forEach\(|for \(let.*records/.test(previewActiveRecord.toString()),
-    noProgrammaticSaveClick: !/\.click\(\)/.test(appendFileActions.toString())
+    noProgrammaticSaveClick: !/\.click\(\)/.test(appendFileActions.toString()),
+    hasAutoPreviewByteLimit: maxAutoPreviewBytes > 0,
+    hasInitialPdfPageLimit: maxInitialPdfPages > 0,
+    hasAbortController: /AbortController/.test(previewActiveRecord.toString()),
+    hasLoadMorePages: /Load .*more PDF page/.test(renderPdfPreview.toString())
   });
 })();

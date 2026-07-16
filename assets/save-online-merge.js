@@ -3,10 +3,11 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const VERSION = "20260715-5844-save-guard-1";
+  const VERSION = "20260716-concurrency-dirty-generation-1";
   let timer = 0;
   let inFlight = false;
   let queued = false;
+  let capturedMutation = null;
 
   window.MASICS_ONLINE_SAVE_MERGE_VERSION = VERSION;
 
@@ -16,6 +17,9 @@
   const text = (id) => String($(id)?.textContent || "").trim();
   const progressKey = () => `masics_cloud_progress:${cfg().queueIdentity}`;
   const stampKey = (name) => `${progressKey()}:${name}`;
+  const dirtyKey = () => stampKey("dirty_unsynced");
+  const dirtyPayloadKey = () => stampKey("dirty_unsynced_payload");
+  const quarantineKey = () => stampKey("local_json_quarantine");
 
   function setSaveStatus(message) {
     const el = $("save-status");
@@ -29,6 +33,17 @@
 
   function delay(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  function jsonHash(textValue) {
+    let hash = 5381;
+    const value = String(textValue || "");
+    for (let i = 0; i < value.length; i += 1) hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
+    return `djb2-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  }
+
+  function generationId(exportedAt, progressText) {
+    return `masics-${String(exportedAt || "").replace(/[^0-9A-Za-z]/g, "-")}-${jsonHash(progressText)}`;
   }
 
   function isTransient(err) {
@@ -95,18 +110,23 @@
   }
 
   async function upload(path, content, mode = "overwrite") {
+    const modeArg = typeof mode === "object" ? mode : { ".tag": mode };
     const res = await fetchWithRetry(DROPBOX_CONTENT + "files/upload", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token()}`,
         "Content-Type": "application/octet-stream",
-        "Dropbox-API-Arg": JSON.stringify({ path, mode: { ".tag": mode }, autorename: false, mute: true, strict_conflict: false })
+        "Dropbox-API-Arg": JSON.stringify({ path, mode: modeArg, autorename: false, mute: true, strict_conflict: false })
       },
       body: content
     });
     if (res.status === 401) throw new Error("Dropbox sign-in expired. Sign out and sign in again.");
     if (res.status === 403) throw new Error("Dropbox did not allow online save. Mario needs edit access to the review folder.");
-    if (res.status === 409) throw new Error("Dropbox could not write the tracker file. Check shared-folder edit permissions.");
+    if (res.status === 409) {
+      const err = new Error("Dropbox write conflict: online progress changed while this save was preparing.");
+      err.dropboxConflict = true;
+      throw err;
+    }
     if (!res.ok) throw new Error(`Dropbox write failed: ${res.status}`);
     return res.json();
   }
@@ -122,6 +142,11 @@
   }
 
   async function loadOnline(base) {
+    const loaded = await loadOnlineWithMetadata(base);
+    return loaded ? loaded.json : null;
+  }
+
+  async function loadOnlineWithMetadata(base) {
     const locators = unique([
       cfg().progressDropboxLatestJsonId,
       `${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`,
@@ -130,7 +155,16 @@
     for (const locator of locators) {
       const res = await download(locator);
       if (!res) continue;
-      try { return await res.json(); } catch { return null; }
+      const metaText = res.headers.get("dropbox-api-result") || "{}";
+      const raw = await res.text();
+      try {
+        const json = JSON.parse(raw);
+        const meta = JSON.parse(metaText);
+        return { json, rev: meta.rev || "", locator, raw };
+      } catch {
+        window.localStorage.setItem(quarantineKey(), JSON.stringify({ locator, raw, quarantinedAt: new Date().toISOString() }));
+        throw new Error("Online progress JSON was malformed. Raw content was quarantined locally and online state must be recovered before saving.");
+      }
     }
     return null;
   }
@@ -139,7 +173,12 @@
     try {
       const parsed = JSON.parse(window.localStorage.getItem(progressKey()) || "{}");
       return parsed && typeof parsed === "object" ? parsed : {};
-    } catch { return {}; }
+    } catch {
+      const raw = window.localStorage.getItem(progressKey()) || "";
+      window.localStorage.setItem(quarantineKey(), JSON.stringify({ source: "localStorage", raw, quarantinedAt: new Date().toISOString() }));
+      setSaveStatus("Local progress JSON looked damaged. It was quarantined locally; reload online state before continuing.");
+      return {};
+    }
   }
 
   function saveLocal(progress) {
@@ -166,6 +205,42 @@
 
   function currentControls() {
     return { decision: allowedDecision($("decision")?.value || ""), notes: String($("notes")?.value || "") };
+  }
+
+  function captureVisibleMutation(reason = "change") {
+    const controls = currentControls();
+    const pos = text("record-position").match(/Record\s+(\d+)\s+of/i);
+    capturedMutation = {
+      reason,
+      queueNumber: pos ? Number(pos[1]) : 0,
+      filename: text("record-title"),
+      decision: controls.decision,
+      notes: controls.notes,
+      updatedAt: new Date().toISOString()
+    };
+    return capturedMutation;
+  }
+
+  function resolveMutationRecord(records, mutation) {
+    if (!mutation) return null;
+    if (mutation.queueNumber) {
+      const exact = records.find((r) => Number(r.queue_number) === mutation.queueNumber && (!mutation.filename || r.filename === mutation.filename));
+      if (exact) return exact;
+      const byQueue = records.find((r) => Number(r.queue_number) === mutation.queueNumber);
+      if (byQueue) return byQueue;
+    }
+    return mutation.filename ? records.find((r) => r.filename === mutation.filename) || null : null;
+  }
+
+  function markDirty(payload) {
+    const value = { dirty: true, markedAt: new Date().toISOString(), payload: payload || capturedMutation || null };
+    window.localStorage.setItem(dirtyKey(), "1");
+    window.localStorage.setItem(dirtyPayloadKey(), JSON.stringify(value));
+  }
+
+  function clearDirty() {
+    window.localStorage.removeItem(dirtyKey());
+    window.localStorage.removeItem(dirtyPayloadKey());
   }
 
   function hasValue(value) {
@@ -220,9 +295,11 @@
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }
 
-  function csv(rows) {
+  function csv(rows, generation = null) {
     const header = ["queue_number", "filename", "review_id", "file_type", "decision", "notes", "updated_at", "reviewed", "excluded", "dropbox_path"];
-    return [header, ...rows.map((row) => header.map((key) => row[key]))].map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n";
+    const fullHeader = generation ? ["generation_id", "source_progress_hash", ...header] : header;
+    const body = rows.map((row) => generation ? [generation.id, generation.hash, ...header.map((key) => row[key])] : header.map((key) => row[key]));
+    return [fullHeader, ...body].map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n";
   }
 
   function filteredKnown(records, decisions) {
@@ -235,13 +312,15 @@
     return out;
   }
 
-  function auditPayload(records, online, beforeLocal, decisions, exportedAt, current, controls, verified) {
+  function auditPayload(records, online, beforeLocal, decisions, exportedAt, current, controls, verified, generation) {
     return {
       schema: "MASICS_MARIO_REVIEW_SAVE_AUDIT_V1",
       trackerVersion: VERSION,
       queueIdentity: cfg().queueIdentity,
       queueVersion: cfg().queueVersion,
       exportedAt,
+      generationId: generation.id,
+      sourceProgressHash: generation.hash,
       previousOnlineExportedAt: online?.exportedAt || "",
       source: "github-pages-cloud-viewer",
       mergePolicy: "visible record is written from current controls before merge; online decisions preserved over blank values",
@@ -260,6 +339,26 @@
     };
   }
 
+  function verifyWholeSave({ records, beforeDecisionCount, decisions, progress, check, current, controls, uploadMeta, expectedRev }) {
+    if (!check || check.queueIdentity !== cfg().queueIdentity) throw new Error("Online verification failed: queue identity changed or progress did not reload.");
+    if (Number(check.total || 0) !== records.length) throw new Error("Online verification failed: saved record count does not match the protected manifest.");
+    const savedCount = Object.keys(check.decisions || {}).length;
+    if (savedCount < beforeDecisionCount) throw new Error("Online verification failed: saved decision count unexpectedly decreased.");
+    for (const id of Object.keys(decisions || {})) {
+      if (!check.decisions || !check.decisions[id]) throw new Error("Online verification failed: a merged decision disappeared after save.");
+    }
+    if (current && controls.decision) {
+      const saved = check.decisions?.[current.review_id] || {};
+      if (String(saved.decision || "") !== controls.decision || String(saved.notes || "") !== controls.notes) {
+        throw new Error(`Online verification failed for #${current.queue_number} ${current.filename}. Press Save Online again before moving on.`);
+      }
+    }
+    if (progress.generationId !== check.generationId || progress.sourceProgressHash !== check.sourceProgressHash) {
+      throw new Error("Online verification failed: generation identity/hash mismatch.");
+    }
+    if (expectedRev && uploadMeta?.rev && uploadMeta.rev === expectedRev) throw new Error("Online verification failed: Dropbox revision did not advance.");
+  }
+
   async function saveNow(reason = "manual") {
     if (!token()) throw new Error("Sign in with Dropbox before saving online.");
     const isAuto = reason === "auto";
@@ -271,17 +370,21 @@
     setSaveStatus(isAuto ? "Auto-saving this visible record online..." : "Saving this visible record online...");
 
     try {
-      const [records, online] = await Promise.all([loadManifest(), loadOnline(base)]);
-      const current = currentRecord(records);
-      const controls = currentControls();
+      const records = await loadManifest();
+      const mutation = capturedMutation || captureVisibleMutation(reason);
+      const current = resolveMutationRecord(records, mutation) || currentRecord(records);
+      const controls = mutation ? { decision: allowedDecision(mutation.decision), notes: String(mutation.notes || "") } : currentControls();
       if (isAuto && !controls.decision) {
         setSaveStatus("Saved locally. Choose a dropdown decision before online auto-save runs.");
         return;
       }
+      markDirty({ reason, current: current ? { reviewId: current.review_id, queueNumber: current.queue_number, filename: current.filename } : null, controls });
+      let onlineWithMeta = await loadOnlineWithMetadata(base);
+      let online = onlineWithMeta?.json || null;
       const beforeLocal = localProgress();
       const local = { ...beforeLocal, queueIdentity: cfg().queueIdentity, decisions: { ...(beforeLocal.decisions || {}) } };
       if (current && (controls.decision || controls.notes.trim())) {
-        local.decisions[current.review_id] = { decision: controls.decision, notes: controls.notes, updatedAt: new Date().toISOString() };
+        local.decisions[current.review_id] = { decision: controls.decision, notes: controls.notes, updatedAt: mutation?.updatedAt || new Date().toISOString() };
       }
       saveLocal(local);
 
@@ -290,7 +393,7 @@
       const reviewed = rows.filter((row) => row.reviewed).length;
       const excluded = rows.filter((row) => row.excluded).length;
       const exportedAt = new Date().toISOString();
-      const progress = {
+      let progress = {
         schema: "MASICS_MARIO_ONLINE_REVIEW_PROGRESS_V1",
         queueIdentity: cfg().queueIdentity,
         queueVersion: cfg().queueVersion,
@@ -310,35 +413,65 @@
         excludedRows: rows.filter((row) => row.excluded)
       };
 
-      const progressText = JSON.stringify(progress, null, 2);
-      const statusCsv = csv(rows);
-      const markedCsv = csv(markedRows(rows));
-      await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, progressText, "overwrite");
-      await upload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, statusCsv, "overwrite");
-      await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_LATEST.csv`, markedCsv, "overwrite");
-
-      let verified = true;
-      if (current && controls.decision) {
-        const check = await loadOnline(base);
-        const saved = check?.decisions?.[current.review_id] || {};
-        verified = String(saved.decision || "") === controls.decision && String(saved.notes || "") === controls.notes;
-        if (!verified) throw new Error(`Online verification failed for #${current.queue_number} ${current.filename}. Press Save Online again before moving on.`);
+      let progressText = JSON.stringify(progress, null, 2);
+      const generation = { hash: jsonHash(progressText), id: "" };
+      generation.id = generationId(exportedAt, progressText);
+      progress = { ...progress, generationId: generation.id, sourceProgressHash: generation.hash };
+      progressText = JSON.stringify(progress, null, 2);
+      const statusCsv = csv(rows, generation);
+      const markedCsv = csv(markedRows(rows), generation);
+      let uploadMeta = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const mode = onlineWithMeta?.rev ? { ".tag": "update", update: onlineWithMeta.rev } : { ".tag": "overwrite" };
+          uploadMeta = await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, progressText, mode);
+          break;
+        } catch (err) {
+          if (!err.dropboxConflict || attempt >= 2) {
+            throw new Error("Dropbox save conflict could not be resolved automatically. Local progress is preserved; reload and Save Online again.");
+          }
+          onlineWithMeta = await loadOnlineWithMetadata(base);
+          online = onlineWithMeta?.json || null;
+          const retryDecisions = filteredKnown(records, mergeDecisions(online?.decisions || {}, local.decisions || {}));
+          progress.decisions = retryDecisions;
+          progress.tagged = buildRows(records, retryDecisions).filter((row) => row.reviewed);
+          progress.excludedRows = buildRows(records, retryDecisions).filter((row) => row.excluded);
+          progressText = JSON.stringify(progress, null, 2);
+        }
       }
+      let sidecarWarning = "";
+      try {
+        await upload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, statusCsv, "overwrite");
+        await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_LATEST.csv`, markedCsv, "overwrite");
+      } catch (err) {
+        sidecarWarning = ` Progress JSON saved, but CSV backup sidecars are incomplete: ${err.message || err}`;
+      }
+      const checkWithMeta = await loadOnlineWithMetadata(base);
+      const check = checkWithMeta?.json || null;
+      verifyWholeSave({ records, beforeDecisionCount: Object.keys(online?.decisions || {}).length, decisions, progress, check, current, controls, uploadMeta, expectedRev: onlineWithMeta?.rev || "" });
+      const verified = true;
 
       const stamp = exportedAt.replace(/[:.]/g, "-");
-      const audit = JSON.stringify(auditPayload(records, online, beforeLocal, decisions, exportedAt, current, controls, verified), null, 2);
-      await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`, audit, "overwrite");
+      const audit = JSON.stringify(auditPayload(records, online, beforeLocal, decisions, exportedAt, current, controls, verified, generation), null, 2);
+      try { await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`, audit, "overwrite"); }
+      catch (err) { sidecarWarning = `${sidecarWarning} Audit sidecar incomplete: ${err.message || err}`.trim(); }
       if (!isAuto) {
         await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, progressText, "add");
-        await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, audit, "add");
-        await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_${stamp}.csv`, markedCsv, "add");
+        try {
+          await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, audit, "add");
+          await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_${stamp}.csv`, markedCsv, "add");
+        } catch (err) {
+          sidecarWarning = `${sidecarWarning} Timestamped backup sidecars incomplete: ${err.message || err}`.trim();
+        }
       }
 
       saveLocal({ queueIdentity: cfg().queueIdentity, decisions, exportedAt });
       window.localStorage.setItem(stampKey("last_online_sync_at"), exportedAt);
+      clearDirty();
+      capturedMutation = null;
       const recordText = current ? `#${current.queue_number} ${current.filename}` : "current progress";
-      setSaveStatus(`${isAuto ? "Auto-saved" : "Saved"} and verified online: ${recordText}. Reviewed ${reviewed}, pending ${progress.pending}, excluded ${excluded}.`);
-      setTopStatus(`Saved and verified online. Reviewed: ${reviewed}. Pending: ${progress.pending}. Excluded: ${excluded}. Marked spreadsheet backup updated.`);
+      setSaveStatus(`${isAuto ? "Auto-saved" : "Saved"} and verified online: ${recordText}. Reviewed ${reviewed}, pending ${progress.pending}, excluded ${excluded}.${sidecarWarning}`);
+      setTopStatus(`Saved and verified online. Reviewed: ${reviewed}. Pending: ${progress.pending}. Excluded: ${excluded}. ${sidecarWarning || "Marked spreadsheet backup updated."}`);
     } finally {
       if (button) button.disabled = false;
     }
@@ -347,6 +480,8 @@
   function schedule(reason) {
     if (!token()) return;
     window.clearTimeout(timer);
+    const mutation = captureVisibleMutation(reason);
+    markDirty(mutation);
     const controls = currentControls();
     if (!controls.decision) {
       setSaveStatus("Saved locally. Pick a dropdown before online auto-save runs.");
@@ -372,6 +507,7 @@
     if (!(target instanceof HTMLElement) || target.id !== "save-online") return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    captureVisibleMutation("manual");
     saveNow("manual").catch((err) => setSaveStatus(err.message || "Online save failed."));
   }, true);
 
@@ -389,15 +525,22 @@
   }, true);
 
   window.addEventListener("beforeunload", (event) => {
-    if (!timer && !inFlight) return;
+    if (!timer && !inFlight && window.localStorage.getItem(dirtyKey()) !== "1") return;
     event.preventDefault();
     event.returnValue = "A review save is still being verified online.";
+  });
+
+  window.addEventListener("focus", () => {
+    if (window.localStorage.getItem(dirtyKey()) === "1") setSaveStatus("Unsynced local change detected. Press Save Online or wait for online verification before closing.");
   });
 
   window.MASICS_ONLINE_SAVE_MERGE_SELF_TEST = () => ({
     version: VERSION,
     savesVisibleRecordFromPage: /currentRecord\(records\)/.test(saveNow.toString()),
     verifiesByReadingDropboxBack: /Online verification failed/.test(saveNow.toString()),
+    usesDropboxUpdateRevision: /\"\\.tag\": \"update\"/.test(saveNow.toString()),
+    hasDirtyMarker: /dirty_unsynced/.test(dirtyKey.toString()),
+    hasGenerationIdentity: /generationId/.test(saveNow.toString()),
     autoRequiresDropdown: /!controls\.decision/.test(schedule.toString()),
     manualSnapshotsOnly: /if \(!isAuto\)/.test(saveNow.toString()),
     writesMarkedReviewedCsv: /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/.test(saveNow.toString())
