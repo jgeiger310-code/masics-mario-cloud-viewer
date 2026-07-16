@@ -4,8 +4,8 @@
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const PDFJS_DIST_VERSION = "6.1.200";
-  const PDFJS_MODULE_URL = `./assets/vendor/pdf.mjs?v=${PDFJS_DIST_VERSION}`;
-  const PDFJS_WORKER_URL = `./assets/vendor/pdf.worker.mjs?v=${PDFJS_DIST_VERSION}`;
+  const PDFJS_MODULE_URL = `./vendor/pdf.mjs?v=${PDFJS_DIST_VERSION}`;
+  const PDFJS_WORKER_URL = `./vendor/pdf.worker.mjs?v=${PDFJS_DIST_VERSION}`;
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
   const pdfExts = [".pdf"];
   const audioExts = [".mp3", ".wav", ".m4a", ".aac", ".ogg"];

@@ -57,8 +57,8 @@ assert.match(preview, /maxAutoPreviewBytes/, "Auto-preview byte limit is missing
 assert.match(preview, /maxInitialPdfPages/, "Initial PDF page limit is missing");
 assert.match(preview, /AbortController/, "Preview cancellation is missing");
 assert.match(preview, /Load .*more PDF page/, "PDF lazy load-more control is missing");
-assert.match(preview, /assets\/vendor\/pdf\.mjs/, "PDF.js module must be locally pinned");
-assert.match(preview, /assets\/vendor\/pdf\.worker\.mjs/, "PDF.js worker must be locally pinned");
+assert.match(preview, /\.\/vendor\/pdf\.mjs/, "PDF.js module must be locally pinned");
+assert.match(preview, /\.\/vendor\/pdf\.worker\.mjs/, "PDF.js worker must be locally pinned");
 assert.doesNotMatch(preview, /cdn\.jsdelivr\.net\/npm\/pdfjs-dist/, "PDF.js CDN dependency must not be used by the production viewer");
 
 console.log("PASS Mario viewer deployment safety checks");
