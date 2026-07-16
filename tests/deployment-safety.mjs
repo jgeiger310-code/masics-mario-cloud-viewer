@@ -18,7 +18,9 @@ const configuredMinimum = Number(config.match(/expectedRecordCount:\s*(\d+)/)?.[
 assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below ${protectedMinimum}`);
 
 assert.match(index, /assets\/config\.js\?v=20260715-manifest-5844-2/, "Viewer must load the current protected config version");
-assert.match(index, /assets\/save-online-merge\.js\?v=20260715-5844-save-guard-1/, "Verified online save guard is missing");
+assert.match(index, /assets\/save-online-merge\.js\?v=20260716-concurrency-dirty-generation-1/, "Verified online save guard is missing");
+assert.match(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "XLSX dependency must be locally pinned");
+assert.doesNotMatch(index, /cdn\.jsdelivr\.net\/npm\/xlsx/, "XLSX CDN dependency must not be used by the production viewer");
 assert.doesNotMatch(index, /autosave-online-v3\.js/, "Obsolete duplicate autosave shim must not return");
 
 assert.match(app, /loaded\.records\.length < minimumRecordCount/, "Manifest shrink guard is missing");
@@ -37,6 +39,13 @@ for (const filename of [
 assert.match(saveMerge, /Online verification failed/, "Save Online must verify by reading Dropbox back");
 assert.match(saveMerge, /mergeDecisions\(online\?\.decisions/, "Online and local decisions must still be merged");
 assert.match(saveMerge, /beforeunload/, "Pending save navigation warning is missing");
+assert.match(saveMerge, /\.tag["']?:\s*"update"/, "Dropbox optimistic-concurrency update mode is missing");
+assert.match(saveMerge, /dirty_unsynced/, "Durable dirty-state marker is missing");
+assert.match(saveMerge, /captureVisibleMutation/, "Captured mutation save guard is missing");
+assert.match(saveMerge, /generationId/, "Progress generation identity is missing");
+assert.match(saveMerge, /sourceProgressHash/, "Progress source hash is missing");
+assert.match(saveMerge, /local_json_quarantine/, "Local JSON corruption quarantine is missing");
+assert.match(saveMerge, /saved decision count unexpectedly decreased/, "Whole-save decision-count verification is missing");
 
 assert.match(missingExport, /String\(decision \|\| ""\)\.trim\(\)\.toLowerCase\(\) === "missing"/, "Missing export must remain decision-specific");
 assert.match(missingExport, /window\.XLSX\.writeFile/, "Missing XLSX writer is missing");
@@ -44,5 +53,12 @@ assert.match(missingExport, /window\.XLSX\.writeFile/, "Missing XLSX writer is m
 assert.match(preview, /URL\.createObjectURL\(blob\)/, "Evidence preview must use browser object URLs");
 assert.doesNotMatch(preview, /readAsDataURL|FileReader/, "Unsafe full-file data URL preview must not return");
 assert.match(preview, /sanitizeDocxHtml/, "DOCX preview sanitization is missing");
+assert.match(preview, /maxAutoPreviewBytes/, "Auto-preview byte limit is missing");
+assert.match(preview, /maxInitialPdfPages/, "Initial PDF page limit is missing");
+assert.match(preview, /AbortController/, "Preview cancellation is missing");
+assert.match(preview, /Load .*more PDF page/, "PDF lazy load-more control is missing");
+assert.match(preview, /assets\/vendor\/pdf\.mjs/, "PDF.js module must be locally pinned");
+assert.match(preview, /assets\/vendor\/pdf\.worker\.mjs/, "PDF.js worker must be locally pinned");
+assert.doesNotMatch(preview, /cdn\.jsdelivr\.net\/npm\/pdfjs-dist/, "PDF.js CDN dependency must not be used by the production viewer");
 
 console.log("PASS Mario viewer deployment safety checks");

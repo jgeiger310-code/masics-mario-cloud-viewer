@@ -21,3 +21,7 @@ jobs:
           node-version: "20"
       - name: Run deployment safety checks
         run: node tests/deployment-safety.mjs
+      - name: Run save hardening behavior checks
+        run: node tests/save-hardening-behavior.mjs
+      - name: Run project separation guard
+        run: node tests/project-separation-guard.mjs
