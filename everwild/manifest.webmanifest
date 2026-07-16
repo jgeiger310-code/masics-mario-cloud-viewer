@@ -1,7 +1,7 @@
 {
-  "name": "Everwild Hidden Grove",
-  "short_name": "Hidden Grove",
-  "description": "Daily Everwild affirmations, festival links, and custom creations from Sam at bgcc.store.",
+  "name": "Everwild Good Vibes Hub",
+  "short_name": "Everwild Vibes",
+  "description": "365 affirmations, festival links, and custom creations by BGCC at bgcc.store.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#123b27",
