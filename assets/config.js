@@ -14,7 +14,8 @@ window.MASICS_DROPBOX_CONFIG = Object.freeze({
   progressDropboxLatestCsvId: "id:PzJJcyLjOoMAAAAAAAH0Wg",
   queueIdentity: "masics_mario_task026_rc53_636_v1",
   queueVersion: "MASICS_MARIO_QUEUE_MANIFEST_V1",
-  // Baseline guard only. The Dropbox manifest may append records without a code rebuild.
-  expectedRecordCount: 636,
+  // Protected minimum as of July 15, 2026. Future queue loads may append records,
+  // but a truncated manifest must never be accepted or saved over current progress.
+  expectedRecordCount: 5844,
   scopes: ["files.metadata.read", "files.content.read", "files.content.write"]
 });
