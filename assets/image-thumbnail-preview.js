@@ -10,7 +10,7 @@
   let bypassNextRecordChange = false;
   let thumbnailTimer = 0;
 
-  window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION = "20260718-thumbnail-debounce-1";
+  window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION = "20260718-thumbnail-debounce-2";
 
   function $(id) {
     return document.getElementById(id);

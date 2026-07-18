@@ -26,7 +26,7 @@ assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("ass
 assert.match(index, /assets\/notes-input-buffer\.js\?v=20260718-notes-input-buffer-1/, "Notes input performance buffer is missing");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("assets/app.js"), "Notes input buffer must load before app.js");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("save-online-merge.js"), "Notes input buffer must load before online-save input listeners");
-assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260718-thumbnail-debounce-1/, "Fast image thumbnail preview is missing");
+assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260718-thumbnail-debounce-2/, "Fast image thumbnail preview is missing");
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
 assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
