@@ -9,6 +9,7 @@ const protectedMinimum = 5844;
 const config = read("assets/config.js");
 const index = read("index.html");
 const app = read("assets/app.js");
+const mountedResolver = read("assets/dropbox-mounted-path-resolver.js");
 const saveMerge = read("assets/save-online-merge.js");
 const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
@@ -18,6 +19,8 @@ const configuredMinimum = Number(config.match(/expectedRecordCount:\s*(\d+)/)?.[
 assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below ${protectedMinimum}`);
 
 assert.match(index, /assets\/config\.js\?v=20260715-manifest-5844-2/, "Viewer must load the current protected config version");
+assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-1/, "Mounted Dropbox path resolver is missing");
+assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260716-concurrency-dirty-generation-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "XLSX dependency must be locally pinned");
 assert.doesNotMatch(index, /cdn\.jsdelivr\.net\/npm\/xlsx/, "XLSX CDN dependency must not be used by the production viewer");
@@ -27,6 +30,11 @@ assert.match(app, /loaded\.records\.length < minimumRecordCount/, "Manifest shri
 assert.match(app, /record_count does not match records/, "Manifest count integrity check is missing");
 assert.match(app, /duplicate or missing review ID/, "Review ID uniqueness check is missing");
 assert.match(app, /Queue manifest includes an embedded decision/, "Manifest decision contamination guard is missing");
+
+assert.match(mountedResolver, /asciiHeaderJson/, "Unicode-safe Dropbox header encoding is missing");
+assert.match(mountedResolver, /files\/search_v2/, "Mounted-folder file-ID search fallback is missing");
+assert.match(mountedResolver, /path_display/, "Mounted-folder suffix matching is missing");
+assert.match(mountedResolver, /sessionStorage/, "Resolved Dropbox file-ID cache is missing");
 
 for (const filename of [
   "MASICS_MARIO_REVIEW_PROGRESS_LATEST.json",
