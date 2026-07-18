@@ -67,6 +67,14 @@
     });
   }
 
+  function evidenceLocators(record) {
+    return unique([
+      record?.dropbox_file_id,
+      record?.dropbox_path_alternates || [],
+      record?.dropbox_path
+    ]);
+  }
+
   function fileExtension(record) {
     const fromExtension = String(record.extension || "").trim().toLowerCase();
     if (fromExtension) return fromExtension.startsWith(".") ? fromExtension : `.${fromExtension}`;
@@ -225,6 +233,7 @@
   }
 
   async function renderDocxPreview(blob, url, record, preview) {
+    await ensureMammothLoaded();
     if (!window.mammoth || typeof window.mammoth.convertToHtml !== "function") {
       throw new Error("The DOCX preview component did not load.");
     }
@@ -242,6 +251,29 @@
     article.appendChild(sanitizeDocxHtml(result.value));
     preview.appendChild(article);
     appendFileActions(preview, url, record);
+  }
+
+  function loadScriptOnce(src, globalName) {
+    if (globalName && window[globalName]) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const existing = Array.from(document.scripts).find((script) => script.src === src);
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error(`Unable to load ${src}`)), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Unable to load ${src}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensureMammothLoaded() {
+    if (window.mammoth && typeof window.mammoth.convertToHtml === "function") return;
+    const mammothUrl = new URL("vendor/mammoth.browser.min.js?v=1.12.0", SCRIPT_BASE_URL).href;
+    await loadScriptOnce(mammothUrl, "mammoth");
   }
 
   function renderMediaElement(tagName, url, record) {
@@ -462,7 +494,7 @@
         status.textContent = `Auto-preview skipped because this file is larger than ${Math.round(maxAutoPreviewBytes / 1024 / 1024)} MB. Press Preview Evidence to load it intentionally.`;
         return;
       }
-      const locators = [record.dropbox_file_id, record.dropbox_path, record.dropbox_path_alternates || []];
+      const locators = evidenceLocators(record);
       cancelActivePreview();
       activePreviewAbortController = new AbortController();
       const response = await downloadFirst(locators, activePreviewAbortController.signal);
@@ -506,10 +538,12 @@
     docIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.doc" }),
     pptxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.pptx" }),
     xlsxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.xlsx" }),
+    triesAlternatesBeforePrimaryPath: /dropbox_path_alternates[\s\S]*dropbox_path/.test(evidenceLocators.toString()),
     onlyActiveRecordHasDownloadPath: /const record = activeRecordFrom\(allRecords\)/.test(previewActiveRecord.toString()) && !/forEach\(|for \(let.*records/.test(previewActiveRecord.toString()),
     noProgrammaticSaveClick: !/\.click\(\)/.test(appendFileActions.toString()),
     hasAutoPreviewByteLimit: maxAutoPreviewBytes > 0,
     hasInitialPdfPageLimit: maxInitialPdfPages > 0,
+    loadsMammothOnDemand: /ensureMammothLoaded/.test(renderDocxPreview.toString()),
     hasAbortController: /AbortController/.test(previewActiveRecord.toString()),
     hasLoadMorePages: /Load .*more PDF page/.test(renderPdfPreview.toString())
   });

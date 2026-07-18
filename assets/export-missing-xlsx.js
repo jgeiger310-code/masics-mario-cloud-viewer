@@ -143,6 +143,28 @@
     return filename;
   }
 
+  function loadScriptOnce(src, globalName) {
+    if (globalName && window[globalName]) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const existing = Array.from(document.scripts).find((script) => script.src === src);
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error(`Unable to load ${src}`)), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Unable to load ${src}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensureXlsxLoaded() {
+    if (window.XLSX) return;
+    await loadScriptOnce(new URL("assets/vendor/xlsx.full.min.js?v=0.18.5", window.location.href).href, "XLSX");
+  }
+
   function updateStatus(message) {
     const status = document.getElementById("status-line");
     if (status) status.textContent = message;
@@ -153,6 +175,7 @@
     if (button) button.disabled = true;
     updateStatus("Loading the full live review tracker and building the Missing-files spreadsheet...");
     try {
+      await ensureXlsxLoaded();
       const { manifest, progress } = await loadCurrentData();
       const rows = missingRows(manifest, progress);
       const filename = exportWorkbook(rows, progress);

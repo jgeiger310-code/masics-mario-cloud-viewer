@@ -478,6 +478,14 @@
     });
   }
 
+  function evidenceLocators(record) {
+    return uniqueLocators([
+      record?.dropbox_file_id,
+      record?.dropbox_path_alternates || [],
+      record?.dropbox_path
+    ]);
+  }
+
   function isLookupError(err) {
     const message = String(err && err.message || "");
     return /missing|moved|not_found|malformed_path|lookup/i.test(message);
@@ -692,6 +700,7 @@
   function renderList() {
     els.list.innerHTML = "";
     const progress = loadProgress();
+    const fragment = document.createDocumentFragment();
     filteredRecords().forEach((record) => {
       const reviewed = isReviewed(record, progress);
       const notesOnly = needsDropdown(record, progress);
@@ -712,8 +721,9 @@
       button.append(number, name, state);
       button.addEventListener("click", () => showRecord(record));
       item.appendChild(button);
-      els.list.appendChild(item);
+      fragment.appendChild(item);
     });
+    els.list.appendChild(fragment);
     updateQueueSummary();
     updateReviewNavigation();
     scrollActiveIntoView();
@@ -766,7 +776,7 @@
     releasePreview();
     els.evidenceStatus.textContent = "Checking Dropbox metadata...";
     try {
-      const locators = uniqueLocators([active.dropbox_file_id, active.dropbox_path, active.dropbox_path_alternates || []]);
+      const locators = evidenceLocators(active);
       const locator = await metadataFirst(locators);
       els.evidenceStatus.textContent = "Loading evidence preview...";
       if (isStreamPreviewRecord(active)) {

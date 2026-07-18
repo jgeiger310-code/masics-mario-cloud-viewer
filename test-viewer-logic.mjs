@@ -41,12 +41,23 @@ const trackerReport = read("assets/tracker-report.js");
 
 test("main viewer loads the 5844 save guard and not the duplicate autosave shim", () => {
   const html = read("index.html");
-  assert.match(html, /assets\/config\.js\?v=20260715-manifest-5844-1/);
-  assert.match(html, /assets\/save-online-merge\.js\?v=20260715-5844-save-guard-1/);
-  assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260715-missing-export-all-tags-1/);
+  assert.match(html, /assets\/config\.js\?v=20260715-manifest-5844-2/);
+  assert.match(html, /assets\/save-online-merge\.js\?v=20260716-concurrency-dirty-generation-1/);
+  assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/);
   assert.match(html, /Download All Missing Tags XLSX/);
   assert.doesNotMatch(html, /autosave-online-v3\.js/);
   assert.match(html, /updates the spreadsheet backup/);
+});
+
+test("review startup avoids export and docx preview dependency blockers", () => {
+  const html = read("index.html");
+  assert.doesNotMatch(html, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/);
+  assert.doesNotMatch(html, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/);
+  assert.match(html, /assets\/queue-performance\.css\?v=20260718-1/);
+  assert.match(missingExport, /ensureXlsxLoaded/);
+  assert.match(missingExport, /xlsx\.full\.min\.js\?v=0\.18\.5/);
+  assert.match(preview, /ensureMammothLoaded/);
+  assert.match(preview, /mammoth\.browser\.min\.js\?v=1\.12\.0/);
 });
 
 test("manifest validation allows append-only growth above protected baseline", () => {
@@ -89,7 +100,7 @@ test("save merge protects newer online decisions from stale local sessions", () 
 });
 
 test("save path writes progress, full status csv, marked csv, audit, and manual snapshots", () => {
-  assert.match(saveMerge, /20260715-5844-save-guard-1/);
+  assert.match(saveMerge, /20260716-concurrency-dirty-generation-1/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_PROGRESS_LATEST\.json/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_STATUS_LATEST\.csv/);
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/);
@@ -97,6 +108,17 @@ test("save path writes progress, full status csv, marked csv, audit, and manual 
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_\$\{stamp\}\.csv/);
   assert.match(saveMerge, /Online verification failed/);
   assert.match(saveMerge, /beforeunload/);
+});
+
+test("evidence preview tries good alternate locators before mounted primary paths", () => {
+  const appLocators = extractFunction(app, "evidenceLocators");
+  const previewLocators = extractFunction(preview, "evidenceLocators");
+  for (const fn of [appLocators, previewLocators]) {
+    assert.ok(fn.indexOf("dropbox_file_id") < fn.indexOf("dropbox_path_alternates"));
+    assert.ok(fn.indexOf("dropbox_path_alternates") < fn.lastIndexOf("dropbox_path"));
+  }
+  assert.match(app, /const locators = evidenceLocators\(active\)/);
+  assert.match(preview, /const locators = evidenceLocators\(record\)/);
 });
 
 test("marked csv contains reviewed, excluded, and notes rows only", () => {

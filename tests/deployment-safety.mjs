@@ -21,8 +21,13 @@ assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below $
 assert.match(index, /assets\/config\.js\?v=20260715-manifest-5844-2/, "Viewer must load the current protected config version");
 assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-3/, "Mounted Dropbox path resolver is missing");
 assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");
+assert.match(index, /assets\/app\.js\?v=20260718-locator-performance-1/, "App locator/performance cache bust is missing");
+assert.match(index, /assets\/safe-preview\.js\?v=20260718-locator-lazy-docx-1/, "Safe preview locator/cache bust is missing");
+assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260716-concurrency-dirty-generation-1/, "Verified online save guard is missing");
-assert.match(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "XLSX dependency must be locally pinned");
+assert.match(index, /assets\/queue-performance\.css\?v=20260718-1/, "Queue performance containment CSS is missing");
+assert.doesNotMatch(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "XLSX dependency must not block normal review startup");
+assert.doesNotMatch(index, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/, "Mammoth dependency must not block normal review startup");
 assert.doesNotMatch(index, /cdn\.jsdelivr\.net\/npm\/xlsx/, "XLSX CDN dependency must not be used by the production viewer");
 assert.doesNotMatch(index, /autosave-online-v3\.js/, "Obsolete duplicate autosave shim must not return");
 
@@ -30,6 +35,9 @@ assert.match(app, /loaded\.records\.length < minimumRecordCount/, "Manifest shri
 assert.match(app, /record_count does not match records/, "Manifest count integrity check is missing");
 assert.match(app, /duplicate or missing review ID/, "Review ID uniqueness check is missing");
 assert.match(app, /Queue manifest includes an embedded decision/, "Manifest decision contamination guard is missing");
+assert.match(app, /function evidenceLocators/, "Evidence locator ordering helper is missing");
+assert.match(app, /dropbox_path_alternates[\s\S]*dropbox_path/, "Evidence alternates must be tried before mounted primary paths");
+assert.match(app, /document\.createDocumentFragment/, "Queue list batch rendering is missing");
 
 assert.match(mountedResolver, /asciiHeaderJson/, "Unicode-safe Dropbox header encoding is missing");
 assert.match(mountedResolver, /files\/search_v2/, "Mounted-folder file-ID search fallback is missing");
@@ -58,10 +66,14 @@ assert.match(saveMerge, /saved decision count unexpectedly decreased/, "Whole-sa
 
 assert.match(missingExport, /String\(decision \|\| ""\)\.trim\(\)\.toLowerCase\(\) === "missing"/, "Missing export must remain decision-specific");
 assert.match(missingExport, /window\.XLSX\.writeFile/, "Missing XLSX writer is missing");
+assert.match(missingExport, /ensureXlsxLoaded/, "XLSX must be loaded on demand");
+assert.match(missingExport, /xlsx\.full\.min\.js\?v=0\.18\.5/, "Lazy XLSX dependency must remain locally pinned");
 
 assert.match(preview, /URL\.createObjectURL\(blob\)/, "Evidence preview must use browser object URLs");
 assert.doesNotMatch(preview, /readAsDataURL|FileReader/, "Unsafe full-file data URL preview must not return");
 assert.match(preview, /sanitizeDocxHtml/, "DOCX preview sanitization is missing");
+assert.match(preview, /ensureMammothLoaded/, "Mammoth must be loaded on demand");
+assert.match(preview, /dropbox_path_alternates[\s\S]*dropbox_path/, "Safe preview alternates must be tried before mounted primary paths");
 assert.match(preview, /maxAutoPreviewBytes/, "Auto-preview byte limit is missing");
 assert.match(preview, /maxInitialPdfPages/, "Initial PDF page limit is missing");
 assert.match(preview, /AbortController/, "Preview cancellation is missing");
