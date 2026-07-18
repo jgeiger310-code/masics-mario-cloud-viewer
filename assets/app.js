@@ -423,6 +423,7 @@
       token_access_type: "online",
       scope: cfg.scopes.join(" ")
     });
+    window.MASICS_AUTH_REDIRECT_IN_PROGRESS = true;
     window.location.href = `${DROPBOX_AUTH}?${params.toString()}`;
   }
 

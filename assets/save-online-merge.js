@@ -3,7 +3,7 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const VERSION = "20260716-concurrency-dirty-generation-1";
+  const VERSION = "20260718-auth-redirect-1";
   let timer = 0;
   let inFlight = false;
   let queued = false;
@@ -241,6 +241,10 @@
   function clearDirty() {
     window.localStorage.removeItem(dirtyKey());
     window.localStorage.removeItem(dirtyPayloadKey());
+  }
+
+  function isAuthRedirectInProgress() {
+    return window.MASICS_AUTH_REDIRECT_IN_PROGRESS === true;
   }
 
   function hasValue(value) {
@@ -525,6 +529,7 @@
   }, true);
 
   window.addEventListener("beforeunload", (event) => {
+    if (isAuthRedirectInProgress()) return;
     if (!timer && !inFlight && window.localStorage.getItem(dirtyKey()) !== "1") return;
     event.preventDefault();
     event.returnValue = "A review save is still being verified online.";
@@ -543,6 +548,7 @@
     hasGenerationIdentity: /generationId/.test(saveNow.toString()),
     autoRequiresDropdown: /!controls\.decision/.test(schedule.toString()),
     manualSnapshotsOnly: /if \(!isAuto\)/.test(saveNow.toString()),
+    allowsDropboxAuthRedirect: /MASICS_AUTH_REDIRECT_IN_PROGRESS/.test(isAuthRedirectInProgress.toString()),
     writesMarkedReviewedCsv: /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/.test(saveNow.toString())
   });
 })();

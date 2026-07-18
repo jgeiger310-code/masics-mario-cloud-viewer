@@ -42,7 +42,7 @@ const trackerReport = read("assets/tracker-report.js");
 test("main viewer loads the 5844 save guard and not the duplicate autosave shim", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260715-manifest-5844-2/);
-  assert.match(html, /assets\/save-online-merge\.js\?v=20260716-concurrency-dirty-generation-1/);
+  assert.match(html, /assets\/save-online-merge\.js\?v=20260718-auth-redirect-1/);
   assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/);
   assert.match(html, /Download All Missing Tags XLSX/);
   assert.doesNotMatch(html, /autosave-online-v3\.js/);
@@ -100,7 +100,7 @@ test("save merge protects newer online decisions from stale local sessions", () 
 });
 
 test("save path writes progress, full status csv, marked csv, audit, and manual snapshots", () => {
-  assert.match(saveMerge, /20260716-concurrency-dirty-generation-1/);
+  assert.match(saveMerge, /20260718-auth-redirect-1/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_PROGRESS_LATEST\.json/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_STATUS_LATEST\.csv/);
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/);
@@ -108,6 +108,7 @@ test("save path writes progress, full status csv, marked csv, audit, and manual 
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_\$\{stamp\}\.csv/);
   assert.match(saveMerge, /Online verification failed/);
   assert.match(saveMerge, /beforeunload/);
+  assert.match(saveMerge, /MASICS_AUTH_REDIRECT_IN_PROGRESS/);
 });
 
 test("evidence preview tries good alternate locators before mounted primary paths", () => {

@@ -21,10 +21,10 @@ assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below $
 assert.match(index, /assets\/config\.js\?v=20260715-manifest-5844-2/, "Viewer must load the current protected config version");
 assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-3/, "Mounted Dropbox path resolver is missing");
 assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");
-assert.match(index, /assets\/app\.js\?v=20260718-locator-performance-1/, "App locator/performance cache bust is missing");
+assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
 assert.match(index, /assets\/safe-preview\.js\?v=20260718-locator-lazy-docx-1/, "Safe preview locator/cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
-assert.match(index, /assets\/save-online-merge\.js\?v=20260716-concurrency-dirty-generation-1/, "Verified online save guard is missing");
+assert.match(index, /assets\/save-online-merge\.js\?v=20260718-auth-redirect-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/queue-performance\.css\?v=20260718-1/, "Queue performance containment CSS is missing");
 assert.doesNotMatch(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "XLSX dependency must not block normal review startup");
 assert.doesNotMatch(index, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/, "Mammoth dependency must not block normal review startup");
@@ -38,6 +38,7 @@ assert.match(app, /Queue manifest includes an embedded decision/, "Manifest deci
 assert.match(app, /function evidenceLocators/, "Evidence locator ordering helper is missing");
 assert.match(app, /dropbox_path_alternates[\s\S]*dropbox_path/, "Evidence alternates must be tried before mounted primary paths");
 assert.match(app, /document\.createDocumentFragment/, "Queue list batch rendering is missing");
+assert.match(app, /MASICS_AUTH_REDIRECT_IN_PROGRESS/, "Dropbox auth redirects must bypass the save-leave warning");
 
 assert.match(mountedResolver, /asciiHeaderJson/, "Unicode-safe Dropbox header encoding is missing");
 assert.match(mountedResolver, /files\/search_v2/, "Mounted-folder file-ID search fallback is missing");
@@ -56,6 +57,7 @@ for (const filename of [
 assert.match(saveMerge, /Online verification failed/, "Save Online must verify by reading Dropbox back");
 assert.match(saveMerge, /mergeDecisions\(online\?\.decisions/, "Online and local decisions must still be merged");
 assert.match(saveMerge, /beforeunload/, "Pending save navigation warning is missing");
+assert.match(saveMerge, /MASICS_AUTH_REDIRECT_IN_PROGRESS/, "Pending save warning must allow Dropbox auth redirects");
 assert.match(saveMerge, /\.tag["']?:\s*"update"/, "Dropbox optimistic-concurrency update mode is missing");
 assert.match(saveMerge, /dirty_unsynced/, "Durable dirty-state marker is missing");
 assert.match(saveMerge, /captureVisibleMutation/, "Captured mutation save guard is missing");
