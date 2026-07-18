@@ -13,7 +13,7 @@
   ]);
   let locatorCache = loadCache();
 
-  window.MASICS_DROPBOX_MOUNT_RESOLVER_VERSION = "20260718-mounted-folders-1";
+  window.MASICS_DROPBOX_MOUNT_RESOLVER_VERSION = "20260718-mounted-folders-2";
 
   function loadCache() {
     try {
@@ -66,7 +66,13 @@
     });
 
     if (suffixMatches.length === 1) return suffixMatches[0];
-    if (suffixMatches.length > 1) return suffixMatches[0];
+    if (suffixMatches.length > 1) {
+      return [...suffixMatches].sort((left, right) => {
+        const leftPath = normalizePath(left.path_display || left.path_lower || "");
+        const rightPath = normalizePath(right.path_display || right.path_lower || "");
+        return leftPath.length - rightPath.length;
+      })[0];
+    }
     if (candidates.length === 1) return candidates[0];
     return null;
   }
