@@ -11,6 +11,7 @@ const index = read("index.html");
 const app = read("assets/app.js");
 const mountedResolver = read("assets/dropbox-mounted-path-resolver.js");
 const notesBuffer = read("assets/notes-input-buffer.js");
+const streamPreview = read("assets/stream-preview-accelerator.js");
 const saveMerge = read("assets/save-online-merge.js");
 const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
@@ -25,6 +26,8 @@ assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("ass
 assert.match(index, /assets\/notes-input-buffer\.js\?v=20260718-notes-input-buffer-1/, "Notes input performance buffer is missing");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("assets/app.js"), "Notes input buffer must load before app.js");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("save-online-merge.js"), "Notes input buffer must load before online-save input listeners");
+assert.match(index, /assets\/stream-preview-accelerator\.js\?v=20260718-stream-native-1/, "Streaming preview accelerator is missing");
+assert.ok(index.indexOf("stream-preview-accelerator.js") < index.indexOf("safe-preview.js"), "Streaming preview accelerator must load before full-download preview listeners");
 assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
 assert.match(index, /assets\/safe-preview\.js\?v=20260718-locator-lazy-docx-1/, "Safe preview locator/cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
@@ -39,6 +42,17 @@ assert.match(notesBuffer, /stopImmediatePropagation/, "Notes input buffer must s
 assert.match(notesBuffer, /SAVE_AFTER_IDLE_MS\s*=\s*750/, "Notes save debounce must remain enabled");
 assert.match(notesBuffer, /masicsBufferedCommit/, "Notes input buffer must preserve the existing save pipeline after debounce");
 assert.match(notesBuffer, /addEventListener\("blur"/, "Notes input must flush immediately on blur");
+
+assert.match(streamPreview, /files\/get_temporary_link/, "Streamable evidence must use Dropbox temporary links");
+assert.match(streamPreview, /imageExts/, "Image streaming coverage is missing");
+assert.match(streamPreview, /audioExts/, "Audio streaming coverage is missing");
+assert.match(streamPreview, /videoExts/, "Video streaming coverage is missing");
+assert.match(streamPreview, /ext === "\.pdf" && !isAndroid\(\)/, "Desktop PDF streaming coverage is missing");
+assert.match(streamPreview, /officeExts/, "Legacy Office direct-open coverage is missing");
+assert.match(streamPreview, /media\.preload = "metadata"/, "Media previews must not preload entire files");
+assert.match(streamPreview, /linkCache\[locator\]/, "Dropbox temporary links must be cached");
+assert.match(streamPreview, /stopImmediatePropagation/, "Streaming accelerator must bypass full-download preview listeners");
+assert.doesNotMatch(streamPreview, /response\.blob\(|arrayBuffer\(/, "Streaming accelerator must not download whole evidence files");
 
 assert.match(app, /loaded\.records\.length < minimumRecordCount/, "Manifest shrink guard is missing");
 assert.match(app, /record_count does not match records/, "Manifest count integrity check is missing");
