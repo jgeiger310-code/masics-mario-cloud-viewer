@@ -11,6 +11,7 @@ const index = read("index.html");
 const app = read("assets/app.js");
 const mountedResolver = read("assets/dropbox-mounted-path-resolver.js");
 const notesBuffer = read("assets/notes-input-buffer.js");
+const imageThumbnail = read("assets/image-thumbnail-preview.js");
 const saveMerge = read("assets/save-online-merge.js");
 const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
@@ -25,6 +26,8 @@ assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("ass
 assert.match(index, /assets\/notes-input-buffer\.js\?v=20260718-notes-input-buffer-1/, "Notes input performance buffer is missing");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("assets/app.js"), "Notes input buffer must load before app.js");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("save-online-merge.js"), "Notes input buffer must load before online-save input listeners");
+assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260718-thumbnail-1/, "Fast image thumbnail preview is missing");
+assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
 assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
 assert.match(index, /assets\/safe-preview\.js\?v=20260718-locator-lazy-docx-1/, "Safe preview locator/cache bust is missing");
@@ -40,6 +43,14 @@ assert.match(notesBuffer, /stopImmediatePropagation/, "Notes input buffer must s
 assert.match(notesBuffer, /SAVE_AFTER_IDLE_MS\s*=\s*750/, "Notes save debounce must remain enabled");
 assert.match(notesBuffer, /masicsBufferedCommit/, "Notes input buffer must preserve the existing save pipeline after debounce");
 assert.match(notesBuffer, /addEventListener\("blur"/, "Notes input must flush immediately on blur");
+
+assert.match(imageThumbnail, /files\/get_thumbnail_v2/, "Images must use Dropbox's thumbnail endpoint for fast previews");
+assert.match(imageThumbnail, /w1024h768/, "Image thumbnails must use a screen-sized preview");
+assert.match(imageThumbnail, /URL\.createObjectURL\(await response\.blob\(\)\)/, "Image thumbnails must remain in-page object URLs");
+assert.match(imageThumbnail, /stopImmediatePropagation/, "Image thumbnails must bypass the automatic full-image download");
+assert.match(imageThumbnail, /Preview Evidence/, "Full-resolution images must remain available on demand");
+assert.match(imageThumbnail, /fallBackToSafePreview/, "Thumbnail failures must fall back to the established safe preview");
+assert.doesNotMatch(imageThumbnail, /get_temporary_link/, "Image preview must not use download-forcing Dropbox temporary links");
 
 assert.match(app, /loaded\.records\.length < minimumRecordCount/, "Manifest shrink guard is missing");
 assert.match(app, /record_count does not match records/, "Manifest count integrity check is missing");
