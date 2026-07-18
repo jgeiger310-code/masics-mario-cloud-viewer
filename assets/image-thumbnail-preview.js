@@ -8,8 +8,10 @@
   let manifestRecords = null;
   let generation = 0;
   let bypassNextRecordChange = false;
+  let thumbnailTimer = 0;
+  let thumbnailAbortController = null;
 
-  window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION = "20260718-thumbnail-1";
+  window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION = "20260718-thumbnail-debounce-1";
 
   function $(id) {
     return document.getElementById(id);
@@ -90,10 +92,19 @@
     }
   }
 
-  async function thumbnail(locator) {
+  function cancelThumbnailRequest() {
+    generation += 1;
+    window.clearTimeout(thumbnailTimer);
+    thumbnailTimer = 0;
+    if (thumbnailAbortController) thumbnailAbortController.abort();
+    thumbnailAbortController = null;
+  }
+
+  async function thumbnail(locator, signal = null) {
     if (cache.has(locator)) return cache.get(locator);
     const response = await fetch(DROPBOX_CONTENT + "files/get_thumbnail_v2", {
       method: "POST",
+      signal,
       headers: {
         Authorization: `Bearer ${token()}`,
         "Dropbox-API-Arg": JSON.stringify({
@@ -107,17 +118,19 @@
     if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign in again.");
     if (response.status === 409) throw new Error(`Dropbox thumbnail unavailable for ${locator}`);
     if (!response.ok) throw new Error(`Dropbox thumbnail failed: ${response.status}`);
-    const url = URL.createObjectURL(await response.blob());
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
     remember(locator, url);
     return url;
   }
 
-  async function firstThumbnail(record) {
+  async function firstThumbnail(record, signal = null) {
     let lastError = null;
     for (const locator of locators(record)) {
       try {
-        return await thumbnail(locator);
+        return await thumbnail(locator, signal);
       } catch (error) {
+        if (error.name === "AbortError") throw error;
         lastError = error;
         if (!/unavailable|missing|moved|not_found|lookup/i.test(String(error.message || ""))) throw error;
       }
@@ -145,22 +158,35 @@
     window.dispatchEvent(new CustomEvent("masics:record-change", { detail: { thumbnailFallback: true } }));
   }
 
-  async function loadThumbnail() {
+  async function loadThumbnail(recordHint = null) {
     const run = ++generation;
     const key = selectedKey();
     const status = $("evidence-status");
     if (!key || !token() || !status) return;
+    if (thumbnailAbortController) thumbnailAbortController.abort();
+    thumbnailAbortController = new AbortController();
     try {
       status.textContent = "Loading fast image preview from Dropbox...";
-      const record = activeRecordFrom(await records());
+      const record = recordHint || activeRecordFrom(await records());
       if (!record || run !== generation || key !== selectedKey()) return;
-      const url = await firstThumbnail(record);
+      const url = await firstThumbnail(record, thumbnailAbortController.signal);
       if (run !== generation || key !== selectedKey()) return;
       render(url, record);
       status.textContent = "Fast image preview loaded. Full-resolution image remains available through Preview Evidence.";
-    } catch {
+    } catch (error) {
+      if (error.name === "AbortError") return;
       if (run === generation && key === selectedKey()) fallBackToSafePreview();
+    } finally {
+      if (run === generation) thumbnailAbortController = null;
     }
+  }
+
+  function scheduleThumbnail(recordHint = null) {
+    cancelThumbnailRequest();
+    thumbnailTimer = window.setTimeout(() => {
+      thumbnailTimer = 0;
+      loadThumbnail(recordHint);
+    }, 180);
   }
 
   window.addEventListener("masics:record-change", (event) => {
@@ -171,11 +197,11 @@
     const ext = extension($("record-title")?.textContent || "");
     if (!imageExts.has(ext)) return;
     event.stopImmediatePropagation();
-    loadThumbnail();
+    scheduleThumbnail(event.detail?.record || null);
   });
 
   window.addEventListener("pagehide", () => {
-    generation += 1;
+    cancelThumbnailRequest();
     for (const url of cache.values()) URL.revokeObjectURL(url);
     cache.clear();
   });
@@ -186,6 +212,8 @@
     usesDropboxThumbnail: /files\/get_thumbnail_v2/.test(thumbnail.toString()),
     keepsFullResolutionOnDemand: /Preview Evidence/.test(render.toString()),
     hasSafePreviewFallback: /thumbnailFallback/.test(fallBackToSafePreview.toString()),
-    cachesRecentThumbnails: maxCachedImages > 0
+    cachesRecentThumbnails: maxCachedImages > 0,
+    debouncesRecordChanges: /setTimeout/.test(scheduleThumbnail.toString()) && /180/.test(scheduleThumbnail.toString()),
+    abortsStaleThumbnailRequests: /AbortController/.test(loadThumbnail.toString()) && /signal/.test(thumbnail.toString())
   });
 })();

@@ -763,7 +763,7 @@
     updateExportStatus();
     updateReviewNavigation();
     updateSaveStatus(saved.updatedAt ? `Autosaved locally: ${formatLocalTime(saved.updatedAt)}` : undefined);
-    window.dispatchEvent(new CustomEvent("masics:record-change"));
+    window.dispatchEvent(new CustomEvent("masics:record-change", { detail: { record } }));
   }
 
   function releasePreview() {

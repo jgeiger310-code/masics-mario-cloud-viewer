@@ -26,7 +26,7 @@ assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("ass
 assert.match(index, /assets\/notes-input-buffer\.js\?v=20260718-notes-input-buffer-1/, "Notes input performance buffer is missing");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("assets/app.js"), "Notes input buffer must load before app.js");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("save-online-merge.js"), "Notes input buffer must load before online-save input listeners");
-assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260718-thumbnail-1/, "Fast image thumbnail preview is missing");
+assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260718-thumbnail-debounce-1/, "Fast image thumbnail preview is missing");
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
 assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
@@ -46,10 +46,12 @@ assert.match(notesBuffer, /addEventListener\("blur"/, "Notes input must flush im
 
 assert.match(imageThumbnail, /files\/get_thumbnail_v2/, "Images must use Dropbox's thumbnail endpoint for fast previews");
 assert.match(imageThumbnail, /w1024h768/, "Image thumbnails must use a screen-sized preview");
-assert.match(imageThumbnail, /URL\.createObjectURL\(await response\.blob\(\)\)/, "Image thumbnails must remain in-page object URLs");
+assert.match(imageThumbnail, /URL\.createObjectURL\(blob\)/, "Image thumbnails must remain in-page object URLs");
 assert.match(imageThumbnail, /stopImmediatePropagation/, "Image thumbnails must bypass the automatic full-image download");
 assert.match(imageThumbnail, /Preview Evidence/, "Full-resolution images must remain available on demand");
 assert.match(imageThumbnail, /fallBackToSafePreview/, "Thumbnail failures must fall back to the established safe preview");
+assert.match(imageThumbnail, /debouncesRecordChanges/, "Image thumbnail requests must be debounced during fast navigation");
+assert.match(imageThumbnail, /abortsStaleThumbnailRequests/, "Stale image thumbnail requests must be canceled");
 assert.doesNotMatch(imageThumbnail, /get_temporary_link/, "Image preview must not use download-forcing Dropbox temporary links");
 
 assert.match(app, /loaded\.records\.length < minimumRecordCount/, "Manifest shrink guard is missing");
@@ -60,6 +62,7 @@ assert.match(app, /function evidenceLocators/, "Evidence locator ordering helper
 assert.match(app, /dropbox_path_alternates[\s\S]*dropbox_path/, "Evidence alternates must be tried before mounted primary paths");
 assert.match(app, /document\.createDocumentFragment/, "Queue list batch rendering is missing");
 assert.match(app, /MASICS_AUTH_REDIRECT_IN_PROGRESS/, "Dropbox auth redirects must bypass the save-leave warning");
+assert.match(app, /masics:record-change", \{ detail: \{ record \} \}/, "Record-change events must pass the active record to avoid redundant manifest reads");
 
 assert.match(mountedResolver, /asciiHeaderJson/, "Unicode-safe Dropbox header encoding is missing");
 assert.match(mountedResolver, /files\/search_v2/, "Mounted-folder file-ID search fallback is missing");
