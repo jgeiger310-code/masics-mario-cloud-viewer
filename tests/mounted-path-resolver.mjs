@@ -48,17 +48,30 @@ function installResolver(nativeFetch) {
       const search = JSON.parse(init.body);
       assert.equal(search.query, "20220613_114354.jpg");
       return new Response(JSON.stringify({
-        matches: [{
-          metadata: {
-            ".tag": "metadata",
+        matches: [
+          {
             metadata: {
-              ".tag": "file",
-              id: "id:mounted-file",
-              name: "20220613_114354.jpg",
-              path_display: "/jake Geiger/Mario’s Missing Files/20220613_114354.jpg"
+              ".tag": "metadata",
+              metadata: {
+                ".tag": "file",
+                id: "id:nested-copy",
+                name: "20220613_114354.jpg",
+                path_display: "/jake Geiger/Masic Case Master - Working Database/01_SOURCE_COLLECTION_COPIES/Mario’s Missing Files/20220613_114354.jpg"
+              }
+            }
+          },
+          {
+            metadata: {
+              ".tag": "metadata",
+              metadata: {
+                ".tag": "file",
+                id: "id:mounted-file",
+                name: "20220613_114354.jpg",
+                path_display: "/jake Geiger/Mario’s Missing Files/20220613_114354.jpg"
+              }
             }
           }
-        }],
+        ],
         has_more: false
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
@@ -83,4 +96,4 @@ function installResolver(nativeFetch) {
   assert.equal(calls.length, 2, "Cached mounted file IDs should skip the second Dropbox search");
 }
 
-console.log("PASS mounted Dropbox Unicode path and file-ID fallback checks");
+console.log("PASS mounted Dropbox Unicode path, duplicate selection, and file-ID fallback checks");
