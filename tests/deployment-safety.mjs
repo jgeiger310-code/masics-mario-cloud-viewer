@@ -10,6 +10,7 @@ const config = read("assets/config.js");
 const index = read("index.html");
 const app = read("assets/app.js");
 const mountedResolver = read("assets/dropbox-mounted-path-resolver.js");
+const notesBuffer = read("assets/notes-input-buffer.js");
 const saveMerge = read("assets/save-online-merge.js");
 const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
@@ -21,6 +22,9 @@ assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below $
 assert.match(index, /assets\/config\.js\?v=20260715-manifest-5844-2/, "Viewer must load the current protected config version");
 assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-3/, "Mounted Dropbox path resolver is missing");
 assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");
+assert.match(index, /assets\/notes-input-buffer\.js\?v=20260718-notes-input-buffer-1/, "Notes input performance buffer is missing");
+assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("assets/app.js"), "Notes input buffer must load before app.js");
+assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("save-online-merge.js"), "Notes input buffer must load before online-save input listeners");
 assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
 assert.match(index, /assets\/safe-preview\.js\?v=20260718-locator-lazy-docx-1/, "Safe preview locator/cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
@@ -30,6 +34,11 @@ assert.doesNotMatch(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "X
 assert.doesNotMatch(index, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/, "Mammoth dependency must not block normal review startup");
 assert.doesNotMatch(index, /cdn\.jsdelivr\.net\/npm\/xlsx/, "XLSX CDN dependency must not be used by the production viewer");
 assert.doesNotMatch(index, /autosave-online-v3\.js/, "Obsolete duplicate autosave shim must not return");
+
+assert.match(notesBuffer, /stopImmediatePropagation/, "Notes input buffer must stop per-keystroke legacy listeners");
+assert.match(notesBuffer, /SAVE_AFTER_IDLE_MS\s*=\s*750/, "Notes save debounce must remain enabled");
+assert.match(notesBuffer, /masicsBufferedCommit/, "Notes input buffer must preserve the existing save pipeline after debounce");
+assert.match(notesBuffer, /addEventListener\("blur"/, "Notes input must flush immediately on blur");
 
 assert.match(app, /loaded\.records\.length < minimumRecordCount/, "Manifest shrink guard is missing");
 assert.match(app, /record_count does not match records/, "Manifest count integrity check is missing");
