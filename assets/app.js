@@ -629,6 +629,7 @@
     validateManifest(loaded);
     manifest = loaded;
     records = loaded.records;
+    window.MASICS_QUEUE_RECORDS = records;
     const onlineSync = await syncOnlineProgressIntoBrowser();
     const excluded = onlineSync.imported ? onlineSync.excluded || 0 : 0;
     const reviewed = onlineSync.imported ? onlineSync.reviewed : loaded.reviewed_count;
@@ -733,6 +734,7 @@
   function showRecord(record) {
     const previousReviewId = active?.review_id || "";
     active = record;
+    window.MASICS_ACTIVE_RECORD = record;
     releasePreview();
     els.empty.hidden = true;
     els.view.hidden = false;

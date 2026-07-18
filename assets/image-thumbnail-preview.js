@@ -5,12 +5,11 @@
   const imageExts = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff"]);
   const cache = new Map();
   const maxCachedImages = 12;
-  let manifestRecords = null;
   let generation = 0;
   let bypassNextRecordChange = false;
   let thumbnailTimer = 0;
 
-  window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION = "20260718-thumbnail-debounce-2";
+  window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION = "20260718-thumbnail-autopreview-1";
 
   function $(id) {
     return document.getElementById(id);
@@ -42,43 +41,19 @@
     return unique([record?.dropbox_file_id, record?.dropbox_path_alternates || [], record?.dropbox_path]);
   }
 
-  async function downloadJson(locator) {
-    const response = await fetch(DROPBOX_CONTENT + "files/download", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token()}`,
-        "Dropbox-API-Arg": JSON.stringify({ path: locator })
-      }
-    });
-    if (!response.ok) throw new Error(`Dropbox manifest lookup failed: ${response.status}`);
-    return response.json();
-  }
-
-  async function records() {
-    if (manifestRecords) return manifestRecords;
-    const cfg = window.MASICS_DROPBOX_CONFIG;
-    let lastError = null;
-    for (const locator of unique([cfg?.manifestDropboxPath, cfg?.manifestDropboxPathAlternates || []])) {
-      try {
-        const manifest = await downloadJson(locator);
-        manifestRecords = manifest.records || [];
-        return manifestRecords;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    throw lastError || new Error("Review manifest is unavailable.");
-  }
-
-  function activeRecordFrom(allRecords) {
+  function activeRecordFromApp() {
+    const record = window.MASICS_ACTIVE_RECORD;
+    if (record && typeof record === "object") return record;
+    const records = window.MASICS_QUEUE_RECORDS;
+    if (!Array.isArray(records)) return null;
     const position = ($("record-position")?.textContent || "").match(/Record\s+(\d+)\s+of/i);
     if (position) {
       const queueNumber = Number(position[1]);
-      const found = allRecords.find((record) => Number(record.queue_number) === queueNumber);
+      const found = records.find((candidate) => Number(candidate.queue_number) === queueNumber);
       if (found) return found;
     }
     const title = ($("record-title")?.textContent || "").trim();
-    return allRecords.find((record) => record.filename === title);
+    return records.find((candidate) => candidate.filename === title) || null;
   }
 
   function remember(locator, url) {
@@ -160,7 +135,7 @@
     if (!key || !token() || !status) return;
     try {
       status.textContent = "Loading fast image preview from Dropbox...";
-      const record = recordHint || activeRecordFrom(await records());
+      const record = recordHint || activeRecordFromApp();
       if (!record || run !== generation || key !== selectedKey()) return;
       const url = await firstThumbnail(record);
       if (run !== generation || key !== selectedKey()) return;
@@ -179,6 +154,16 @@
     }, 350);
   }
 
+  function scheduleIfCurrentRecordIsImage(recordHint = null) {
+    const ext = extension($("record-title")?.textContent || "");
+    if (!imageExts.has(ext)) return;
+    scheduleThumbnail(recordHint || activeRecordFromApp());
+  }
+
+  function recoverMissedInitialRecord() {
+    scheduleIfCurrentRecordIsImage();
+  }
+
   window.addEventListener("masics:record-change", (event) => {
     if (bypassNextRecordChange) {
       bypassNextRecordChange = false;
@@ -187,8 +172,11 @@
     const ext = extension($("record-title")?.textContent || "");
     if (!imageExts.has(ext)) return;
     event.stopImmediatePropagation();
-    scheduleThumbnail(event.detail?.record || null);
+    scheduleIfCurrentRecordIsImage(event.detail?.record || null);
   });
+
+  window.setTimeout(recoverMissedInitialRecord, 0);
+  window.addEventListener("load", recoverMissedInitialRecord);
 
   window.addEventListener("pagehide", () => {
     cancelThumbnailRequest();
@@ -200,10 +188,12 @@
     version: window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION,
     supportsCommonImages: imageExts.has(".jpg") && imageExts.has(".png") && imageExts.has(".webp"),
     usesDropboxThumbnail: /files\/get_thumbnail_v2/.test(thumbnail.toString()),
+    neverDownloadsManifestOrEvidenceForAutoPreview: !/files\/download/.test(activeRecordFromApp.toString() + loadThumbnail.toString()),
     keepsFullResolutionOnDemand: /Preview Evidence/.test(render.toString()),
     hasSafePreviewFallback: /thumbnailFallback/.test(fallBackToSafePreview.toString()),
     cachesRecentThumbnails: maxCachedImages > 0,
     debouncesRecordChanges: /setTimeout/.test(scheduleThumbnail.toString()) && /350/.test(scheduleThumbnail.toString()),
+    recoversMissedInitialRecord: /scheduleIfCurrentRecordIsImage/.test(recoverMissedInitialRecord.toString()),
     ignoresStaleThumbnailResponses: /generation/.test(loadThumbnail.toString()) && /selectedKey/.test(loadThumbnail.toString())
   });
 })();
