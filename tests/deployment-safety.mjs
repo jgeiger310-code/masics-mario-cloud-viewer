@@ -19,7 +19,7 @@ const configuredMinimum = Number(config.match(/expectedRecordCount:\s*(\d+)/)?.[
 assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below ${protectedMinimum}`);
 
 assert.match(index, /assets\/config\.js\?v=20260715-manifest-5844-2/, "Viewer must load the current protected config version");
-assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-1/, "Mounted Dropbox path resolver is missing");
+assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-2/, "Mounted Dropbox path resolver is missing");
 assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260716-concurrency-dirty-generation-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "XLSX dependency must be locally pinned");
