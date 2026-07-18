@@ -30,7 +30,7 @@ assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260718-thumbnail-1
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
 assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
-assert.match(index, /assets\/safe-preview\.js\?v=20260718-locator-lazy-docx-1/, "Safe preview locator/cache bust is missing");
+assert.match(index, /assets\/safe-preview\.js\?v=20260718-thumbnail-auto-1/, "Safe preview thumbnail cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260718-auth-redirect-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/queue-performance\.css\?v=20260718-1/, "Queue performance containment CSS is missing");
@@ -97,6 +97,11 @@ assert.doesNotMatch(preview, /readAsDataURL|FileReader/, "Unsafe full-file data 
 assert.match(preview, /sanitizeDocxHtml/, "DOCX preview sanitization is missing");
 assert.match(preview, /ensureMammothLoaded/, "Mammoth must be loaded on demand");
 assert.match(preview, /dropbox_path_alternates[\s\S]*dropbox_path/, "Safe preview alternates must be tried before mounted primary paths");
+assert.match(preview, /imageAutoPreviewUsesThumbnailOnly/, "Image auto-preview must use Dropbox thumbnails, not full file downloads");
+assert.match(preview, /nonImageAutoPreviewDoesNotDownload/, "Non-image record selection must not auto-download evidence");
+assert.match(preview, /manualFullPreviewStillDownloadsActiveRecord/, "Manual Preview Evidence must still load only the active record");
+assert.match(preview, /files\/get_thumbnail_v2/, "Thumbnail endpoint is missing");
+assert.match(preview, /No full evidence file was downloaded/, "Thumbnail status must say full evidence was not downloaded");
 assert.match(preview, /maxAutoPreviewBytes/, "Auto-preview byte limit is missing");
 assert.match(preview, /maxInitialPdfPages/, "Initial PDF page limit is missing");
 assert.match(preview, /AbortController/, "Preview cancellation is missing");

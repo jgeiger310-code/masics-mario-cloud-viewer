@@ -44,11 +44,12 @@
   let previewTimer = 0;
   let previewInFlight = false;
   let previewQueued = false;
+  let previewQueuedOptions = null;
   let activePreviewUrl = "";
   let activePreviewAbortController = null;
   let pdfJsPromise = null;
 
-  window.MASICS_SAFE_PREVIEW_VERSION = "20260709-docx-auto-1";
+  window.MASICS_SAFE_PREVIEW_VERSION = "20260718-thumbnail-auto-1";
 
   function $(id) {
     return document.getElementById(id);
@@ -135,6 +136,27 @@
     return response;
   }
 
+  async function dropboxThumbnail(locator, signal = null) {
+    const response = await fetch(DROPBOX_CONTENT + "files/get_thumbnail_v2", {
+      method: "POST",
+      signal,
+      headers: {
+        "Authorization": `Bearer ${token()}`,
+        "Dropbox-API-Arg": JSON.stringify({
+          resource: { ".tag": "path", path: locator },
+          format: "jpeg",
+          size: "w640h480",
+          mode: "fitone_bestfit"
+        })
+      }
+    });
+    if (response.status === 401) throw new Error("Dropbox sign-in expired. Sign in again.");
+    if (response.status === 403) throw new Error("Dropbox permission denied for this thumbnail.");
+    if (response.status === 409) throw new Error(`Dropbox thumbnail is unavailable: ${locator}`);
+    if (!response.ok) throw new Error(`Dropbox thumbnail failed: ${response.status}`);
+    return response;
+  }
+
   async function downloadFirst(locators, signal = null) {
     let lastError = null;
     for (const locator of unique(locators)) {
@@ -146,6 +168,19 @@
       }
     }
     throw lastError || new Error("No Dropbox locator is available for this record.");
+  }
+
+  async function thumbnailFirst(locators, signal = null) {
+    let lastError = null;
+    for (const locator of unique(locators)) {
+      try {
+        return await dropboxThumbnail(locator, signal);
+      } catch (err) {
+        lastError = err;
+        if (!/unavailable|missing|moved|not_found|lookup/i.test(String(err.message || ""))) throw err;
+      }
+    }
+    throw lastError || new Error("No Dropbox thumbnail locator is available for this record.");
   }
 
   function releasePreviewUrl() {
@@ -188,10 +223,40 @@
 
   function showNoDownloadMessage(record) {
     const preview = $("preview");
+    if (!preview) return;
     const message = document.createElement("p");
     message.className = "preview-message";
     message.textContent = `${record.filename} is not auto-previewed. Press Preview Evidence to load it safely from Dropbox.`;
     preview.appendChild(message);
+  }
+
+  function showManualPreviewMessage() {
+    const status = $("evidence-status");
+    const preview = $("preview");
+    const title = ($("record-title")?.textContent || "").trim();
+    if (!status || !preview) return;
+    cancelActivePreview();
+    releasePreviewUrl();
+    preview.innerHTML = "";
+    const message = document.createElement("p");
+    message.className = "preview-message";
+    message.textContent = title
+      ? `${title} is not loaded automatically. Press Preview Evidence to load only this file from Dropbox.`
+      : "Evidence is not loaded automatically. Press Preview Evidence to load only the active file from Dropbox.";
+    preview.appendChild(message);
+    status.textContent = "Preview waits for Preview Evidence. No file was downloaded.";
+  }
+
+  function showThumbnailUnavailableMessage(record) {
+    const status = $("evidence-status");
+    const preview = $("preview");
+    if (!status || !preview) return;
+    preview.innerHTML = "";
+    const message = document.createElement("p");
+    message.className = "preview-message";
+    message.textContent = `${record.filename} thumbnail is unavailable. Press Preview Evidence to load the active file from Dropbox.`;
+    preview.appendChild(message);
+    status.textContent = "Thumbnail unavailable. No full evidence file was downloaded.";
   }
 
   function appendFileActions(container, url, record, openLabel = "Open original") {
@@ -287,6 +352,17 @@
       if (status) status.textContent = "Browser could not decode this media file, but no file was downloaded.";
     }, { once: true });
     return media;
+  }
+
+  function renderThumbnail(blob, url, record) {
+    const preview = $("preview");
+    preview.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = `Thumbnail preview for ${record.filename}`;
+    img.loading = "eager";
+    preview.appendChild(img);
+    return { statusMessage: "Image thumbnail loaded quickly. Press Preview Evidence for the full file. No full evidence file was downloaded." };
   }
 
   async function loadPdfJs() {
@@ -467,6 +543,8 @@
     if (!options.force && key === lastPreviewKey) return;
     if (previewInFlight) {
       previewQueued = true;
+      previewQueuedOptions = options.force ? { force: true } : {};
+      cancelActivePreview();
       return;
     }
 
@@ -481,13 +559,12 @@
       const record = activeRecordFrom(allRecords);
       if (!record) throw new Error("No active record is selected.");
 
-      if (!options.force && !isAutoPreviewRecord(record)) {
-        showNoDownloadMessage(record);
-        status.textContent = "Preview waits for Preview Evidence. No file was downloaded.";
+      if (!options.force && !isImageRecord(record)) {
+        showManualPreviewMessage();
         return;
       }
 
-      status.textContent = isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : isDocxRecord(record) ? "Loading DOCX preview from Dropbox..." : "Loading evidence preview from Dropbox...";
+      status.textContent = !options.force && isImageRecord(record) ? "Loading fast image thumbnail from Dropbox..." : isImageRecord(record) ? "Loading in-page image preview from Dropbox..." : isDocxRecord(record) ? "Loading DOCX preview from Dropbox..." : "Loading evidence preview from Dropbox...";
       const recordSize = Number(record.file_size || record.size || 0);
       if (!options.force && recordSize > maxAutoPreviewBytes) {
         showNoDownloadMessage(record);
@@ -497,6 +574,21 @@
       const locators = evidenceLocators(record);
       cancelActivePreview();
       activePreviewAbortController = new AbortController();
+      if (!options.force) {
+        try {
+          const response = await thumbnailFirst(locators, activePreviewAbortController.signal);
+          const blob = new Blob([await response.blob()], { type: "image/jpeg" });
+          activePreviewUrl = URL.createObjectURL(blob);
+          if (key !== selectedKey()) return;
+          const result = renderThumbnail(blob, activePreviewUrl, record);
+          if (key !== selectedKey()) return;
+          status.textContent = result.statusMessage;
+        } catch (err) {
+          if (err.name === "AbortError") return;
+          if (key === selectedKey()) showThumbnailUnavailableMessage(record);
+        }
+        return;
+      }
       const response = await downloadFirst(locators, activePreviewAbortController.signal);
       const blob = previewBlob(await response.blob(), record);
       activePreviewUrl = URL.createObjectURL(blob);
@@ -509,7 +601,11 @@
       if (err.name !== "AbortError") status.textContent = err.message || "Unable to load evidence preview.";
     } finally {
       previewInFlight = false;
-      if (previewQueued) schedulePreview({ force: true });
+      if (previewQueued) {
+        const queuedOptions = previewQueuedOptions || {};
+        previewQueuedOptions = null;
+        schedulePreview(queuedOptions);
+      }
     }
   }
 
@@ -534,6 +630,9 @@
 
   window.MASICS_SAFE_PREVIEW_SELF_TEST = () => ({
     version: window.MASICS_SAFE_PREVIEW_VERSION,
+    imageAutoPreviewUsesThumbnailOnly: /get_thumbnail_v2/.test(dropboxThumbnail.toString()) && /thumbnailFirst/.test(previewActiveRecord.toString()),
+    nonImageAutoPreviewDoesNotDownload: /!options\.force && !isImageRecord/.test(previewActiveRecord.toString()) && /Preview waits for Preview Evidence/.test(showManualPreviewMessage.toString()),
+    manualFullPreviewStillDownloadsActiveRecord: /options\.force/.test(previewActiveRecord.toString()) && /downloadFirst/.test(previewActiveRecord.toString()),
     docxIsAutoPreview: isAutoPreviewRecord({ filename: "sample.docx" }),
     docIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.doc" }),
     pptxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.pptx" }),
