@@ -4,7 +4,7 @@
   const nativeFetch = window.fetch.bind(window);
   const DROPBOX_RPC_PREFIX = "https://api.dropboxapi.com/2/";
   const DROPBOX_CONTENT_PREFIX = "https://content.dropboxapi.com/2/";
-  const CACHE_KEY = "masics_dropbox_mounted_locator_cache_v1";
+  const CACHE_KEY = "masics_dropbox_mounted_locator_cache_v2";
   const MAX_SEARCH_PAGES = 5;
   const RETRYABLE_ENDPOINTS = new Set([
     "files/download",
@@ -13,7 +13,7 @@
   ]);
   let locatorCache = loadCache();
 
-  window.MASICS_DROPBOX_MOUNT_RESOLVER_VERSION = "20260718-mounted-folders-2";
+  window.MASICS_DROPBOX_MOUNT_RESOLVER_VERSION = "20260718-mounted-folders-3";
 
   function loadCache() {
     try {
@@ -51,7 +51,7 @@
     return wrapper.metadata || wrapper;
   }
 
-  function chooseSearchMatch(matches, requestedPath) {
+  function chooseSearchMatch(matches, requestedPath, allowFilenameOnly = true) {
     const filename = filenameFromPath(requestedPath);
     const normalizedFilename = filename.normalize("NFC").toLocaleLowerCase("en-US");
     const normalizedRequestedPath = normalizePath(requestedPath);
@@ -73,7 +73,7 @@
         return leftPath.length - rightPath.length;
       })[0];
     }
-    if (candidates.length === 1) return candidates[0];
+    if (allowFilenameOnly && candidates.length === 1) return candidates[0];
     return null;
   }
 
@@ -90,6 +90,7 @@
         max_results: 100
       }
     };
+    const allMatches = [];
 
     for (let page = 0; page < MAX_SEARCH_PAGES; page += 1) {
       const response = await nativeFetch(DROPBOX_RPC_PREFIX + endpoint, {
@@ -102,9 +103,13 @@
       });
       if (!response.ok) return "";
       const data = await response.json();
-      const match = chooseSearchMatch(data.matches || [], path);
-      if (match && match.id) return match.id;
-      if (!data.has_more || !data.cursor) return "";
+      allMatches.push(...(data.matches || []));
+      const exactMatch = chooseSearchMatch(allMatches, path, false);
+      if (exactMatch && exactMatch.id) return exactMatch.id;
+      if (!data.has_more || !data.cursor) {
+        const uniqueFilenameMatch = chooseSearchMatch(allMatches, path, true);
+        return uniqueFilenameMatch && uniqueFilenameMatch.id ? uniqueFilenameMatch.id : "";
+      }
       endpoint = "files/search/continue_v2";
       body = { cursor: data.cursor };
     }
