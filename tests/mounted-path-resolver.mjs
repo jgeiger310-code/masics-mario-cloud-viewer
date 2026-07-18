@@ -18,6 +18,12 @@ function installResolver(nativeFetch) {
 }
 
 {
+  assert.throws(
+    () => new Headers({ "Dropbox-API-Arg": JSON.stringify({ path: "/Mario’s Missing Files/test.jpg" }) }),
+    /ByteString|greater than 255/,
+    "The regression test must reproduce the browser Unicode-header failure"
+  );
+
   const calls = [];
   const nativeFetch = async (input, init = {}) => {
     calls.push({ input, init });
@@ -47,6 +53,24 @@ function installResolver(nativeFetch) {
     if (url.endsWith("files/search_v2")) {
       const search = JSON.parse(init.body);
       assert.equal(search.query, "20220613_114354.jpg");
+      return new Response(JSON.stringify({
+        matches: [{
+          metadata: {
+            ".tag": "metadata",
+            metadata: {
+              ".tag": "file",
+              id: "id:unrelated-copy",
+              name: "20220613_114354.jpg",
+              path_display: "/jake Geiger/Unrelated Folder/20220613_114354.jpg"
+            }
+          }
+        }],
+        has_more: true,
+        cursor: "next-page"
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.endsWith("files/search/continue_v2")) {
+      assert.deepEqual(JSON.parse(init.body), { cursor: "next-page" });
       return new Response(JSON.stringify({
         matches: [
           {
@@ -88,12 +112,12 @@ function installResolver(nativeFetch) {
     }
   };
   assert.equal((await wrappedFetch("https://content.dropboxapi.com/2/files/download", request)).status, 200);
-  assert.equal(calls.length, 3, "Fallback should perform original lookup, exact filename search, and ID retry");
-  assert.equal(JSON.parse(new Headers(calls[2].init.headers).get("Dropbox-API-Arg")).path, "id:mounted-file");
+  assert.equal(calls.length, 4, "Fallback should perform original lookup, paginated search, and file-ID retry");
+  assert.equal(JSON.parse(new Headers(calls[3].init.headers).get("Dropbox-API-Arg")).path, "id:mounted-file");
 
   calls.length = 0;
   assert.equal((await wrappedFetch("https://content.dropboxapi.com/2/files/download", request)).status, 200);
-  assert.equal(calls.length, 2, "Cached mounted file IDs should skip the second Dropbox search");
+  assert.equal(calls.length, 2, "Cached mounted file IDs should skip later Dropbox searches");
 }
 
-console.log("PASS mounted Dropbox Unicode path, duplicate selection, and file-ID fallback checks");
+console.log("PASS Unicode failure reproduction, paginated mounted-path selection, duplicate handling, file-ID retry, and cache checks");
