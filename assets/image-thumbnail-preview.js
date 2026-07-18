@@ -9,7 +9,6 @@
   let generation = 0;
   let bypassNextRecordChange = false;
   let thumbnailTimer = 0;
-  let thumbnailAbortController = null;
 
   window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION = "20260718-thumbnail-debounce-1";
 
@@ -96,15 +95,12 @@
     generation += 1;
     window.clearTimeout(thumbnailTimer);
     thumbnailTimer = 0;
-    if (thumbnailAbortController) thumbnailAbortController.abort();
-    thumbnailAbortController = null;
   }
 
-  async function thumbnail(locator, signal = null) {
+  async function thumbnail(locator) {
     if (cache.has(locator)) return cache.get(locator);
     const response = await fetch(DROPBOX_CONTENT + "files/get_thumbnail_v2", {
       method: "POST",
-      signal,
       headers: {
         Authorization: `Bearer ${token()}`,
         "Dropbox-API-Arg": JSON.stringify({
@@ -124,13 +120,12 @@
     return url;
   }
 
-  async function firstThumbnail(record, signal = null) {
+  async function firstThumbnail(record) {
     let lastError = null;
     for (const locator of locators(record)) {
       try {
-        return await thumbnail(locator, signal);
+        return await thumbnail(locator);
       } catch (error) {
-        if (error.name === "AbortError") throw error;
         lastError = error;
         if (!/unavailable|missing|moved|not_found|lookup/i.test(String(error.message || ""))) throw error;
       }
@@ -163,21 +158,16 @@
     const key = selectedKey();
     const status = $("evidence-status");
     if (!key || !token() || !status) return;
-    if (thumbnailAbortController) thumbnailAbortController.abort();
-    thumbnailAbortController = new AbortController();
     try {
       status.textContent = "Loading fast image preview from Dropbox...";
       const record = recordHint || activeRecordFrom(await records());
       if (!record || run !== generation || key !== selectedKey()) return;
-      const url = await firstThumbnail(record, thumbnailAbortController.signal);
+      const url = await firstThumbnail(record);
       if (run !== generation || key !== selectedKey()) return;
       render(url, record);
       status.textContent = "Fast image preview loaded. Full-resolution image remains available through Preview Evidence.";
     } catch (error) {
-      if (error.name === "AbortError") return;
       if (run === generation && key === selectedKey()) fallBackToSafePreview();
-    } finally {
-      if (run === generation) thumbnailAbortController = null;
     }
   }
 
@@ -214,6 +204,6 @@
     hasSafePreviewFallback: /thumbnailFallback/.test(fallBackToSafePreview.toString()),
     cachesRecentThumbnails: maxCachedImages > 0,
     debouncesRecordChanges: /setTimeout/.test(scheduleThumbnail.toString()) && /350/.test(scheduleThumbnail.toString()),
-    abortsStaleThumbnailRequests: /AbortController/.test(loadThumbnail.toString()) && /signal/.test(thumbnail.toString())
+    ignoresStaleThumbnailResponses: /generation/.test(loadThumbnail.toString()) && /selectedKey/.test(loadThumbnail.toString())
   });
 })();

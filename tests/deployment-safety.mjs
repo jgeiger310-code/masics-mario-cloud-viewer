@@ -52,7 +52,7 @@ assert.match(imageThumbnail, /Preview Evidence/, "Full-resolution images must re
 assert.match(imageThumbnail, /fallBackToSafePreview/, "Thumbnail failures must fall back to the established safe preview");
 assert.match(imageThumbnail, /debouncesRecordChanges/, "Image thumbnail requests must be debounced during fast navigation");
 assert.match(imageThumbnail, /350/, "Image thumbnail debounce must be long enough to absorb fast record navigation");
-assert.match(imageThumbnail, /abortsStaleThumbnailRequests/, "Stale image thumbnail requests must be canceled");
+assert.match(imageThumbnail, /ignoresStaleThumbnailResponses/, "Stale image thumbnail responses must be ignored");
 assert.doesNotMatch(imageThumbnail, /get_temporary_link/, "Image preview must not use download-forcing Dropbox temporary links");
 
 assert.match(app, /loaded\.records\.length < minimumRecordCount/, "Manifest shrink guard is missing");
