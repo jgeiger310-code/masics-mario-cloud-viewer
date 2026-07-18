@@ -51,6 +51,7 @@ assert.match(imageThumbnail, /stopImmediatePropagation/, "Image thumbnails must 
 assert.match(imageThumbnail, /Preview Evidence/, "Full-resolution images must remain available on demand");
 assert.match(imageThumbnail, /fallBackToSafePreview/, "Thumbnail failures must fall back to the established safe preview");
 assert.match(imageThumbnail, /debouncesRecordChanges/, "Image thumbnail requests must be debounced during fast navigation");
+assert.match(imageThumbnail, /350/, "Image thumbnail debounce must be long enough to absorb fast record navigation");
 assert.match(imageThumbnail, /abortsStaleThumbnailRequests/, "Stale image thumbnail requests must be canceled");
 assert.doesNotMatch(imageThumbnail, /get_temporary_link/, "Image preview must not use download-forcing Dropbox temporary links");
 

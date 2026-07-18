@@ -186,7 +186,7 @@
     thumbnailTimer = window.setTimeout(() => {
       thumbnailTimer = 0;
       loadThumbnail(recordHint);
-    }, 180);
+    }, 350);
   }
 
   window.addEventListener("masics:record-change", (event) => {
@@ -213,7 +213,7 @@
     keepsFullResolutionOnDemand: /Preview Evidence/.test(render.toString()),
     hasSafePreviewFallback: /thumbnailFallback/.test(fallBackToSafePreview.toString()),
     cachesRecentThumbnails: maxCachedImages > 0,
-    debouncesRecordChanges: /setTimeout/.test(scheduleThumbnail.toString()) && /180/.test(scheduleThumbnail.toString()),
+    debouncesRecordChanges: /setTimeout/.test(scheduleThumbnail.toString()) && /350/.test(scheduleThumbnail.toString()),
     abortsStaleThumbnailRequests: /AbortController/.test(loadThumbnail.toString()) && /signal/.test(thumbnail.toString())
   });
 })();
