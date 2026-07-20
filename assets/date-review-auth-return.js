@@ -9,11 +9,7 @@
     }
   }
   function tokenReady() {
-    try {
-      return Boolean(sessionStorage.getItem("masics_access_token"));
-    } catch {
-      return false;
-    }
+    try { return Boolean(sessionStorage.getItem("masics_access_token")); } catch { return false; }
   }
   function clearFlags() {
     try {
@@ -23,15 +19,12 @@
   }
   function returnToDateReview() {
     clearFlags();
-    window.location.replace("date-review.html?auth=dropbox&v=20260720-4");
+    window.location.replace("date-review.html?auth=dropbox&v=20260720-exact-1");
   }
   if (!wantsDateReview()) return;
   const status = document.getElementById("status-line");
-  if (status) status.textContent = "Dropbox sign-in complete. Returning to the date-review file viewer…";
-  if (tokenReady()) {
-    returnToDateReview();
-    return;
-  }
+  if (status) status.textContent = "Dropbox sign-in complete. Returning to the exact-file date-review viewer…";
+  if (tokenReady()) { returnToDateReview(); return; }
   let tries = 0;
   const timer = window.setInterval(() => {
     tries += 1;
