@@ -1,0 +1,10 @@
+window.MARIO_DATE_REVIEW_CATEGORIES=["Permits, code enforcement, zoning, and property records","FOIL requests, responses, and appeals","Town Board, meeting minutes, agendas, and resolutions","Emails and electronic communications","Attorney, Farrington, letters, and related correspondence","Audio, video, and recordings","Photos, screenshots, and scanned images","Other missing records"];
+window.MARIO_DATE_REVIEW_DATA=[];
+document.write('<script src="assets/date-review-data-1.js?v=1"><\/script>');
+document.write('<script src="assets/date-review-data-2.js?v=1"><\/script>');
+document.write('<script src="assets/date-review-data-3.js?v=1"><\/script>');
+document.write('<script src="assets/date-review-data-4.js?v=1"><\/script>');
+document.write('<script src="assets/date-review-data-5.js?v=1"><\/script>');
+document.write('<script src="assets/date-review-data-6.js?v=1"><\/script>');
+document.write('<script src="assets/date-review-data-7.js?v=1"><\/script>');
+document.write('<script src="assets/date-review-data-8.js?v=1"><\/script>');
