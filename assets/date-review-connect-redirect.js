@@ -14,13 +14,9 @@
       return;
     }
 
+    sessionStorage.setItem("masics_auth_return_to", "date-review");
     sessionStorage.setItem("masics_return_to_date_review", "1");
-    const loginWindow = window.open("./", "masicsDropboxSignIn");
-    if (!loginWindow) {
-      if (status) status.textContent = "The browser blocked the Dropbox sign-in tab. Allow pop-ups for this site, then press Connect Dropbox again.";
-      return;
-    }
-
-    if (status) status.textContent = "The normal Mario viewer opened in another tab. Sign in with Dropbox there, return to this tab, then press Connect Dropbox again.";
+    if (status) status.textContent = "Opening the normal Dropbox sign-in page. After sign-in, return to the date review page.";
+    window.location.assign("./");
   }, true);
 })();
