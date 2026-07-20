@@ -1,13 +1,13 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Mario Incomplete-Date File Review</title><link rel="stylesheet" href="assets/date-review.css?v=1"><script src="assets/vendor/mammoth.browser.min.js"></script><script src="assets/vendor/xlsx.full.min.js"></script><script src="assets/auth-storage-fallback.js?v=20260709-storage-quota-2"></script></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Mario Incomplete-Date File Review</title><link rel="stylesheet" href="assets/date-review.css?v=20260720-exact-1"><script src="assets/auth-storage-fallback.js?v=20260709-storage-quota-2"></script></head><body>
 <header class="topbar">
   <div>
     <h1>Mario — Incomplete-Date Source File Review</h1>
-    <p>The actual source file for the selected entry appears automatically in the large <b>FILE CONTENTS</b> panel. Only the selected file is loaded.</p>
+    <p>This version uses the <b>exact file name from the attorney schedule</b>, checks the known Dropbox folders first, then searches Dropbox by that exact filename. Only the selected file is loaded.</p>
     <div id="connection" class="connection warn">Dropbox is not connected yet.</div>
   </div>
   <div class="top-actions">
     <button id="connect" class="primary">Connect Dropbox</button>
-    <button id="reload">Reload source files</button>
+    <button id="reload">Reload selected file</button>
     <button id="export" class="primary">Export completed review CSV</button>
   </div>
 </header>
@@ -44,10 +44,10 @@
     </section>
 
     <section class="source-match">
-      <div class="label">Source file matched from Mario's Dropbox review queue</div>
+      <div class="label">Exact source file named in the attorney schedule</div>
       <div class="match-row">
-        <select id="candidateSelect" disabled><option>Connect Dropbox to match source files</option></select>
-        <button id="rematch" disabled>Find matches again</button>
+        <select id="candidateSelect" disabled><option>Connect Dropbox to load the exact source file</option></select>
+        <button id="rematch" disabled>Exact filename mode</button>
       </div>
       <div id="candidateMeta" class="match-meta"></div>
     </section>
@@ -57,7 +57,7 @@
       <div id="previewStatus" class="preview-status">Waiting for Dropbox connection.</div>
     </div>
     <section id="filePreview" class="file-preview">
-      <div class="preview-card"><div class="empty-preview">Connect Dropbox. The selected source file will then load here automatically.</div></div>
+      <div class="preview-card"><div class="empty-preview">Connect Dropbox. The exact file named in the schedule will load here.</div></div>
     </section>
   </main>
 
@@ -78,17 +78,11 @@
     </div>
 
     <div class="edit-block">
-      <label class="checkline">
-        <input id="confirmed" type="checkbox">
-        Date, description, and source file checked and confirmed
-      </label>
+      <label class="checkline"><input id="confirmed" type="checkbox"> Date, description, and source file checked and confirmed</label>
     </div>
 
     <div class="edit-block remove-box">
-      <label class="checkline">
-        <input id="remove" type="checkbox">
-        Remove this entry from the legal schedule
-      </label>
+      <label class="checkline"><input id="remove" type="checkbox"> Remove this entry from the legal schedule</label>
       <div class="small-label" style="margin-top:9px">Reason for removal</div>
       <textarea id="removeReason" rows="2" placeholder="Duplicate, wrong item, already produced, not relevant, etc."></textarea>
     </div>
@@ -115,5 +109,4 @@
     </div>
   </aside>
 </div>
-
-<script src="assets/date-review-data.js?v=1"></script><script src="assets/date-review-app.js?v=1"></script><script src="assets/date-review-connect-redirect.js?v=20260720-2"></script></body></html>
+<script src="assets/date-review-data.js?v=1"></script><script src="assets/date-review-filenames.js?v=20260720-exact-1"></script><script src="assets/date-review-exact-lite.js?v=20260720-exact-1"></script></body></html>
