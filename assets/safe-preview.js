@@ -49,7 +49,7 @@
   let activePreviewAbortController = null;
   let pdfJsPromise = null;
 
-  window.MASICS_SAFE_PREVIEW_VERSION = "20260720-supported-auto-preview-1";
+  window.MASICS_SAFE_PREVIEW_VERSION = "20260720-supported-auto-preview-2";
 
   function $(id) {
     return document.getElementById(id);
@@ -112,7 +112,7 @@
   }
 
   function isAutoPreviewRecord(record) {
-    return isImageRecord(record) || isPdfRecord(record) || isAudioRecord(record) || isVideoRecord(record) || isDocxRecord(record);
+    return isImageRecord(record) || isPdfRecord(record) || isAudioRecord(record) || isVideoRecord(record) || isDocxRecord(record) || textExts.includes(fileExtension(record));
   }
 
   function isAndroidBrowser() {
@@ -641,6 +641,9 @@
     manualFullPreviewStillDownloadsActiveRecord: /options\.force/.test(previewActiveRecord.toString()) && /downloadFirst/.test(previewActiveRecord.toString()),
     thumbnailFileIdsUseDropboxIdResource: thumbnailResource("id:abc123")[".tag"] === "id",
     docxIsAutoPreview: isAutoPreviewRecord({ filename: "sample.docx" }),
+    jsonIsAutoPreview: isAutoPreviewRecord({ filename: "sample.json" }),
+    csvIsAutoPreview: isAutoPreviewRecord({ filename: "sample.csv" }),
+    txtIsAutoPreview: isAutoPreviewRecord({ filename: "sample.txt" }),
     docIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.doc" }),
     pptxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.pptx" }),
     xlsxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.xlsx" }),

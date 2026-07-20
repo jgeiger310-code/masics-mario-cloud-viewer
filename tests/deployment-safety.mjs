@@ -31,7 +31,7 @@ assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("assets/ap
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
 assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
-assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-1/, "Safe preview cache bust is missing");
+assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260720-notes-10s-idle-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/queue-performance\.css\?v=20260718-1/, "Queue performance containment CSS is missing");
@@ -116,6 +116,9 @@ assert.match(preview, /ensureMammothLoaded/, "Mammoth must be loaded on demand")
 assert.match(preview, /dropbox_path_alternates[\s\S]*dropbox_path/, "Safe preview alternates must be tried before mounted primary paths");
 assert.match(preview, /imageAutoPreviewUsesThumbnailOnly/, "Image auto-preview must use Dropbox thumbnails, not full file downloads");
 assert.match(preview, /supportedNonImagesAutoPreviewWithByteLimit/, "Supported non-image records must auto-preview again with a size guard");
+assert.match(preview, /textExts\.includes\(fileExtension\(record\)\)/, "Text, CSV, JSON, and Markdown records must auto-preview in-page");
+assert.match(preview, /jsonIsAutoPreview/, "JSON auto-preview regression check is missing");
+assert.match(preview, /csvIsAutoPreview/, "CSV auto-preview regression check is missing");
 assert.match(preview, /!options\.force && !isAutoPreviewRecord\(record\)/, "Only unsupported formats should wait for Preview Evidence");
 assert.match(preview, /!options\.force && isImageRecord\(record\)/, "Image auto-preview must stay on the thumbnail-only path");
 assert.match(preview, /manualFullPreviewStillDownloadsActiveRecord/, "Manual Preview Evidence must still load only the active record");
