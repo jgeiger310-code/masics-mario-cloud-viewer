@@ -65,8 +65,16 @@ test("image auto-preview uses record metadata and Dropbox thumbnail IDs", () => 
   assert.match(imageThumbnail, /detectsImagesFromRecordMetadata/);
   assert.match(imageThumbnail, /usesDropboxIdResourceForFileIds/);
   assert.doesNotMatch(imageThumbnail, /files\/download/);
-  assert.match(preview, /20260720-thumbnail-id-1/);
+  assert.match(preview, /20260720-supported-auto-preview-1/);
   assert.match(preview, /thumbnailFileIdsUseDropboxIdResource/);
+});
+
+test("supported non-image records auto-preview with a size guard", () => {
+  assert.match(preview, /supportedNonImagesAutoPreviewWithByteLimit/);
+  assert.match(preview, /!options\.force && !isAutoPreviewRecord\(record\)/);
+  assert.match(preview, /!options\.force && isImageRecord\(record\)/);
+  assert.match(preview, /recordSize > maxAutoPreviewBytes/);
+  assert.match(preview, /downloadFirst\(locators/);
 });
 
 test("review startup avoids export and docx preview dependency blockers", () => {

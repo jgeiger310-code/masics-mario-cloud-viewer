@@ -49,7 +49,7 @@
   let activePreviewAbortController = null;
   let pdfJsPromise = null;
 
-  window.MASICS_SAFE_PREVIEW_VERSION = "20260720-thumbnail-id-1";
+  window.MASICS_SAFE_PREVIEW_VERSION = "20260720-supported-auto-preview-1";
 
   function $(id) {
     return document.getElementById(id);
@@ -565,7 +565,7 @@
       const record = activeRecordFrom(allRecords);
       if (!record) throw new Error("No active record is selected.");
 
-      if (!options.force && !isImageRecord(record)) {
+      if (!options.force && !isAutoPreviewRecord(record)) {
         showManualPreviewMessage();
         return;
       }
@@ -580,7 +580,7 @@
       const locators = evidenceLocators(record);
       cancelActivePreview();
       activePreviewAbortController = new AbortController();
-      if (!options.force) {
+      if (!options.force && isImageRecord(record)) {
         try {
           const response = await thumbnailFirst(locators, activePreviewAbortController.signal);
           const blob = new Blob([await response.blob()], { type: "image/jpeg" });
@@ -637,7 +637,7 @@
   window.MASICS_SAFE_PREVIEW_SELF_TEST = () => ({
     version: window.MASICS_SAFE_PREVIEW_VERSION,
     imageAutoPreviewUsesThumbnailOnly: /get_thumbnail_v2/.test(dropboxThumbnail.toString()) && /thumbnailFirst/.test(previewActiveRecord.toString()),
-    nonImageAutoPreviewDoesNotDownload: /!options\.force && !isImageRecord/.test(previewActiveRecord.toString()) && /Preview waits for Preview Evidence/.test(showManualPreviewMessage.toString()),
+    supportedNonImagesAutoPreviewWithByteLimit: /!options\.force && !isAutoPreviewRecord/.test(previewActiveRecord.toString()) && /maxAutoPreviewBytes/.test(previewActiveRecord.toString()),
     manualFullPreviewStillDownloadsActiveRecord: /options\.force/.test(previewActiveRecord.toString()) && /downloadFirst/.test(previewActiveRecord.toString()),
     thumbnailFileIdsUseDropboxIdResource: thumbnailResource("id:abc123")[".tag"] === "id",
     docxIsAutoPreview: isAutoPreviewRecord({ filename: "sample.docx" }),
