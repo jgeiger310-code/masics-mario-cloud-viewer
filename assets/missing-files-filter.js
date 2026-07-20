@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  const VERSION = "20260720-missing-filter-stable-selection-1";
+  const AUTO_SELECT_DELAY_MS = 1600;
   const filter = document.getElementById("filter");
   const list = document.getElementById("queue-list");
   const counts = document.getElementById("queue-counts");
@@ -9,6 +11,10 @@
 
   const progressKey = `masics_cloud_progress:${cfg.queueIdentity}`;
   let applying = false;
+  let selectTimer = 0;
+  let selectionGeneration = 0;
+
+  window.MASICS_MISSING_FILES_FILTER_VERSION = VERSION;
 
   function decisions() {
     try {
@@ -18,6 +24,20 @@
     } catch {
       return {};
     }
+  }
+
+  function scheduleFirstVisibleSelection(button) {
+    selectionGeneration += 1;
+    const generation = selectionGeneration;
+    window.clearTimeout(selectTimer);
+    if (!button) return;
+    selectTimer = window.setTimeout(() => {
+      if (generation !== selectionGeneration || filter.value !== "missing") return;
+      if (!button.isConnected || button.closest("li")?.hidden) return;
+      const activeButton = list.querySelector("button.active");
+      if (activeButton && !activeButton.closest("li")?.hidden) return;
+      button.click();
+    }, AUTO_SELECT_DELAY_MS);
   }
 
   function applyMissingFilter() {
@@ -48,13 +68,19 @@
         counts.textContent = counts.textContent.replace(/^\d+ shown/, `${shown} shown`);
       }
 
-      if (!activeVisible && firstVisibleButton) firstVisibleButton.click();
+      // Do not switch records inside the same browser event cycle that changed a
+      // dropdown. A select emits input and change, and immediate auto-selection
+      // previously let the second event save against the next Missing record.
+      if (!activeVisible) scheduleFirstVisibleSelection(firstVisibleButton);
+      else scheduleFirstVisibleSelection(null);
     } finally {
       applying = false;
     }
   }
 
   filter.addEventListener("change", () => {
+    selectionGeneration += 1;
+    window.clearTimeout(selectTimer);
     if (filter.value === "missing") {
       window.setTimeout(applyMissingFilter, 0);
       return;
@@ -66,4 +92,11 @@
     if (filter.value === "missing") window.setTimeout(applyMissingFilter, 0);
   });
   observer.observe(list, { childList: true, subtree: true });
+
+  window.MASICS_MISSING_FILES_FILTER_SELF_TEST = () => ({
+    version: VERSION,
+    filtersFromSavedReviewId: /dataset\.reviewId/.test(applyMissingFilter.toString()),
+    delaysAutoSelection: AUTO_SELECT_DELAY_MS >= 1000,
+    cancelsStaleSelection: /selectionGeneration/.test(scheduleFirstVisibleSelection.toString())
+  });
 })();
