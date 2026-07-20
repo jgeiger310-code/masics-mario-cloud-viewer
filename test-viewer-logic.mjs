@@ -37,6 +37,7 @@ const app = read("assets/app.js");
 const saveMerge = read("assets/save-online-merge.js");
 const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
+const imageThumbnail = read("assets/image-thumbnail-preview.js");
 const trackerReport = read("assets/tracker-report.js");
 
 test("main viewer loads the 5844 save guard and not the duplicate autosave shim", () => {
@@ -55,6 +56,17 @@ test("notes online save waits for ten seconds of idle typing", () => {
   assert.match(saveMerge, /NOTES_FALLBACK_DELAY_MS\s*=\s*10000/);
   assert.match(saveMerge, /NOTES_BUFFERED_COMMIT_DELAY_MS\s*=\s*0/);
   assert.match(saveMerge, /DECISION_SAVE_DELAY_MS\s*=\s*900/);
+});
+
+test("image auto-preview uses record metadata and Dropbox thumbnail IDs", () => {
+  assert.match(imageThumbnail, /20260720-thumbnail-metadata-id-1/);
+  assert.match(imageThumbnail, /function recordExtension/);
+  assert.match(imageThumbnail, /function thumbnailResource/);
+  assert.match(imageThumbnail, /detectsImagesFromRecordMetadata/);
+  assert.match(imageThumbnail, /usesDropboxIdResourceForFileIds/);
+  assert.doesNotMatch(imageThumbnail, /files\/download/);
+  assert.match(preview, /20260720-thumbnail-id-1/);
+  assert.match(preview, /thumbnailFileIdsUseDropboxIdResource/);
 });
 
 test("review startup avoids export and docx preview dependency blockers", () => {

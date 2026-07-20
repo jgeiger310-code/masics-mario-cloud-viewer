@@ -9,7 +9,7 @@
   let bypassNextRecordChange = false;
   let thumbnailTimer = 0;
 
-  window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION = "20260718-thumbnail-autopreview-1";
+  window.MASICS_IMAGE_THUMBNAIL_PREVIEW_VERSION = "20260720-thumbnail-metadata-id-1";
 
   function $(id) {
     return document.getElementById(id);
@@ -22,6 +22,18 @@
   function extension(value) {
     const match = String(value || "").trim().toLowerCase().match(/\.[a-z0-9]{1,8}$/);
     return match ? match[0] : "";
+  }
+
+  function recordExtension(record) {
+    const fromExtension = String(record?.extension || "").trim().toLowerCase();
+    if (fromExtension) return fromExtension.startsWith(".") ? fromExtension : `.${fromExtension}`;
+    const fromType = String(record?.file_type || "").trim().toLowerCase();
+    if (fromType && !fromType.includes("/") && !fromType.startsWith(".")) return `.${fromType}`;
+    return extension(record?.filename || $("record-title")?.textContent || "");
+  }
+
+  function isImageRecord(record) {
+    return imageExts.has(recordExtension(record));
   }
 
   function selectedKey() {
@@ -39,6 +51,12 @@
 
   function locators(record) {
     return unique([record?.dropbox_file_id, record?.dropbox_path_alternates || [], record?.dropbox_path]);
+  }
+
+  function thumbnailResource(locator) {
+    const value = String(locator || "").trim();
+    if (/^id:/i.test(value)) return { ".tag": "id", id: value };
+    return { ".tag": "path", path: value };
   }
 
   function activeRecordFromApp() {
@@ -79,7 +97,7 @@
       headers: {
         Authorization: `Bearer ${token()}`,
         "Dropbox-API-Arg": JSON.stringify({
-          resource: { ".tag": "path", path: locator },
+          resource: thumbnailResource(locator),
           format: "jpeg",
           size: "w1024h768",
           mode: "fitone_bestfit"
@@ -155,9 +173,9 @@
   }
 
   function scheduleIfCurrentRecordIsImage(recordHint = null) {
-    const ext = extension($("record-title")?.textContent || "");
-    if (!imageExts.has(ext)) return;
-    scheduleThumbnail(recordHint || activeRecordFromApp());
+    const record = recordHint || activeRecordFromApp();
+    if (!isImageRecord(record)) return;
+    scheduleThumbnail(record);
   }
 
   function recoverMissedInitialRecord() {
@@ -169,10 +187,10 @@
       bypassNextRecordChange = false;
       return;
     }
-    const ext = extension($("record-title")?.textContent || "");
-    if (!imageExts.has(ext)) return;
+    const record = event.detail?.record || activeRecordFromApp();
+    if (!isImageRecord(record)) return;
     event.stopImmediatePropagation();
-    scheduleIfCurrentRecordIsImage(event.detail?.record || null);
+    scheduleIfCurrentRecordIsImage(record);
   });
 
   window.setTimeout(recoverMissedInitialRecord, 0);
@@ -189,6 +207,8 @@
     supportsCommonImages: imageExts.has(".jpg") && imageExts.has(".png") && imageExts.has(".webp"),
     usesDropboxThumbnail: /files\/get_thumbnail_v2/.test(thumbnail.toString()),
     neverDownloadsManifestOrEvidenceForAutoPreview: !/files\/download/.test(activeRecordFromApp.toString() + loadThumbnail.toString()),
+    detectsImagesFromRecordMetadata: isImageRecord({ filename: "no-visible-extension", file_type: "jpg" }) && isImageRecord({ filename: "no-visible-extension", extension: "png" }),
+    usesDropboxIdResourceForFileIds: thumbnailResource("id:abc123")[".tag"] === "id",
     keepsFullResolutionOnDemand: /Preview Evidence/.test(render.toString()),
     hasSafePreviewFallback: /thumbnailFallback/.test(fallBackToSafePreview.toString()),
     cachesRecentThumbnails: maxCachedImages > 0,

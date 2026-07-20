@@ -49,7 +49,7 @@
   let activePreviewAbortController = null;
   let pdfJsPromise = null;
 
-  window.MASICS_SAFE_PREVIEW_VERSION = "20260718-thumbnail-auto-1";
+  window.MASICS_SAFE_PREVIEW_VERSION = "20260720-thumbnail-id-1";
 
   function $(id) {
     return document.getElementById(id);
@@ -83,6 +83,12 @@
     if (fromType && !fromType.includes("/") && !fromType.startsWith(".")) return `.${fromType}`;
     const fromName = String(record.filename || "").trim().toLowerCase().match(/\.[a-z0-9]{1,8}$/);
     return fromName ? fromName[0] : "";
+  }
+
+  function thumbnailResource(locator) {
+    const value = String(locator || "").trim();
+    if (/^id:/i.test(value)) return { ".tag": "id", id: value };
+    return { ".tag": "path", path: value };
   }
 
   function isImageRecord(record) {
@@ -143,7 +149,7 @@
       headers: {
         "Authorization": `Bearer ${token()}`,
         "Dropbox-API-Arg": JSON.stringify({
-          resource: { ".tag": "path", path: locator },
+          resource: thumbnailResource(locator),
           format: "jpeg",
           size: "w640h480",
           mode: "fitone_bestfit"
@@ -633,6 +639,7 @@
     imageAutoPreviewUsesThumbnailOnly: /get_thumbnail_v2/.test(dropboxThumbnail.toString()) && /thumbnailFirst/.test(previewActiveRecord.toString()),
     nonImageAutoPreviewDoesNotDownload: /!options\.force && !isImageRecord/.test(previewActiveRecord.toString()) && /Preview waits for Preview Evidence/.test(showManualPreviewMessage.toString()),
     manualFullPreviewStillDownloadsActiveRecord: /options\.force/.test(previewActiveRecord.toString()) && /downloadFirst/.test(previewActiveRecord.toString()),
+    thumbnailFileIdsUseDropboxIdResource: thumbnailResource("id:abc123")[".tag"] === "id",
     docxIsAutoPreview: isAutoPreviewRecord({ filename: "sample.docx" }),
     docIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.doc" }),
     pptxIsNotAutoPreview: !isAutoPreviewRecord({ filename: "sample.pptx" }),

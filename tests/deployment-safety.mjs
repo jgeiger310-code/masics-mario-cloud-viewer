@@ -26,12 +26,12 @@ assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("ass
 assert.match(index, /assets\/notes-input-buffer\.js\?v=20260720-notes-10s-idle-1/, "Notes input performance buffer is missing");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("assets/app.js"), "Notes input buffer must load before app.js");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("save-online-merge.js"), "Notes input buffer must load before online-save input listeners");
-assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260718-thumbnail-autopreview-1/, "Fast image thumbnail preview is missing");
+assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260720-thumbnail-metadata-id-1/, "Fast image thumbnail preview is missing");
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("assets/app.js"), "Image thumbnails must register before the app selects records");
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
 assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
-assert.match(index, /assets\/safe-preview\.js\?v=20260718-thumbnail-auto-1/, "Safe preview thumbnail cache bust is missing");
+assert.match(index, /assets\/safe-preview\.js\?v=20260720-thumbnail-id-1/, "Safe preview thumbnail cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260720-notes-10s-idle-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/queue-performance\.css\?v=20260718-1/, "Queue performance containment CSS is missing");
@@ -46,6 +46,10 @@ assert.match(notesBuffer, /masicsBufferedCommit/, "Notes input buffer must prese
 assert.match(notesBuffer, /addEventListener\("blur"/, "Notes input must flush immediately on blur");
 
 assert.match(imageThumbnail, /files\/get_thumbnail_v2/, "Images must use Dropbox's thumbnail endpoint for fast previews");
+assert.match(imageThumbnail, /recordExtension/, "Image auto-preview must use record metadata, not only visible title text");
+assert.match(imageThumbnail, /thumbnailResource/, "Image auto-preview must handle Dropbox file IDs explicitly");
+assert.match(imageThumbnail, /\.tag": "id"/, "Image auto-preview must call Dropbox thumbnail with ID resources for file IDs");
+assert.doesNotMatch(imageThumbnail, /resource:\s*\{\s*"\\.tag": "path", path: locator\s*\}/, "Image auto-preview must not force Dropbox file IDs through the path resource");
 assert.match(imageThumbnail, /w1024h768/, "Image thumbnails must use a screen-sized preview");
 assert.match(imageThumbnail, /URL\.createObjectURL\(blob\)/, "Image thumbnails must remain in-page object URLs");
 assert.match(imageThumbnail, /stopImmediatePropagation/, "Image thumbnails must bypass the automatic full-image download");
@@ -106,6 +110,7 @@ assert.match(missingExport, /xlsx\.full\.min\.js\?v=0\.18\.5/, "Lazy XLSX depend
 
 assert.match(preview, /URL\.createObjectURL\(blob\)/, "Evidence preview must use browser object URLs");
 assert.doesNotMatch(preview, /readAsDataURL|FileReader/, "Unsafe full-file data URL preview must not return");
+assert.match(preview, /thumbnailResource/, "Safe preview thumbnail path must handle Dropbox file IDs explicitly");
 assert.match(preview, /sanitizeDocxHtml/, "DOCX preview sanitization is missing");
 assert.match(preview, /ensureMammothLoaded/, "Mammoth must be loaded on demand");
 assert.match(preview, /dropbox_path_alternates[\s\S]*dropbox_path/, "Safe preview alternates must be tried before mounted primary paths");
