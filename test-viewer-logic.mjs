@@ -42,11 +42,19 @@ const trackerReport = read("assets/tracker-report.js");
 test("main viewer loads the 5844 save guard and not the duplicate autosave shim", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260715-manifest-5844-2/);
-  assert.match(html, /assets\/save-online-merge\.js\?v=20260718-auth-redirect-1/);
+  assert.match(html, /assets\/save-online-merge\.js\?v=20260720-notes-10s-idle-1/);
   assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/);
   assert.match(html, /Download All Missing Tags XLSX/);
   assert.doesNotMatch(html, /autosave-online-v3\.js/);
   assert.match(html, /updates the spreadsheet backup/);
+});
+
+test("notes online save waits for ten seconds of idle typing", () => {
+  const html = read("index.html");
+  assert.match(html, /assets\/notes-input-buffer\.js\?v=20260720-notes-10s-idle-1/);
+  assert.match(saveMerge, /NOTES_FALLBACK_DELAY_MS\s*=\s*10000/);
+  assert.match(saveMerge, /NOTES_BUFFERED_COMMIT_DELAY_MS\s*=\s*0/);
+  assert.match(saveMerge, /DECISION_SAVE_DELAY_MS\s*=\s*900/);
 });
 
 test("review startup avoids export and docx preview dependency blockers", () => {
@@ -100,7 +108,7 @@ test("save merge protects newer online decisions from stale local sessions", () 
 });
 
 test("save path writes progress, full status csv, marked csv, audit, and manual snapshots", () => {
-  assert.match(saveMerge, /20260718-auth-redirect-1/);
+  assert.match(saveMerge, /20260720-notes-10s-idle-1/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_PROGRESS_LATEST\.json/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_STATUS_LATEST\.csv/);
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/);

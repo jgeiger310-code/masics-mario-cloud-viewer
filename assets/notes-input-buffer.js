@@ -1,8 +1,8 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260718-notes-input-buffer-1";
-  const SAVE_AFTER_IDLE_MS = 750;
+  const VERSION = "20260720-notes-10s-idle-1";
+  const SAVE_AFTER_IDLE_MS = 10000;
   let timer = 0;
   let pendingTarget = null;
   let composing = false;
@@ -36,7 +36,7 @@
   function queueCommit(target) {
     pendingTarget = target;
     clearTimer();
-    saveStatus("Typing notes… local save will run after you pause.");
+    saveStatus("Typing notes... online save waits until you pause for 10 seconds.");
     timer = window.setTimeout(commitPending, SAVE_AFTER_IDLE_MS);
   }
 

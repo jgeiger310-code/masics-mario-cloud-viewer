@@ -3,7 +3,10 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const VERSION = "20260718-auth-redirect-1";
+  const VERSION = "20260720-notes-10s-idle-1";
+  const NOTES_BUFFERED_COMMIT_DELAY_MS = 0;
+  const NOTES_FALLBACK_DELAY_MS = 10000;
+  const DECISION_SAVE_DELAY_MS = 900;
   let timer = 0;
   let inFlight = false;
   let queued = false;
@@ -481,7 +484,7 @@
     }
   }
 
-  function schedule(reason) {
+  function schedule(reason, event = null) {
     if (!token()) return;
     window.clearTimeout(timer);
     const mutation = captureVisibleMutation(reason);
@@ -492,7 +495,10 @@
       return;
     }
     setSaveStatus("Saved locally. Online verification queued...");
-    timer = window.setTimeout(() => runAuto().catch((err) => setSaveStatus(`Online save failed: ${err.message || err}`)), reason === "notes" ? 2600 : 900);
+    const delayMs = reason === "notes"
+      ? (event?.masicsBufferedCommit === true ? NOTES_BUFFERED_COMMIT_DELAY_MS : NOTES_FALLBACK_DELAY_MS)
+      : DECISION_SAVE_DELAY_MS;
+    timer = window.setTimeout(() => runAuto().catch((err) => setSaveStatus(`Online save failed: ${err.message || err}`)), delayMs);
   }
 
   async function runAuto() {
@@ -518,14 +524,14 @@
   document.addEventListener("change", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || target.id !== "decision") return;
-    schedule("decision");
+    schedule("decision", event);
   }, true);
 
   document.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (target.id === "notes") schedule("notes");
-    if (target.id === "decision") schedule("decision");
+    if (target.id === "notes") schedule("notes", event);
+    if (target.id === "decision") schedule("decision", event);
   }, true);
 
   window.addEventListener("beforeunload", (event) => {
@@ -549,6 +555,8 @@
     autoRequiresDropdown: /!controls\.decision/.test(schedule.toString()),
     manualSnapshotsOnly: /if \(!isAuto\)/.test(saveNow.toString()),
     allowsDropboxAuthRedirect: /MASICS_AUTH_REDIRECT_IN_PROGRESS/.test(isAuthRedirectInProgress.toString()),
-    writesMarkedReviewedCsv: /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/.test(saveNow.toString())
+    writesMarkedReviewedCsv: /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/.test(saveNow.toString()),
+    notesAutosaveWaitsForTenSecondIdle: NOTES_FALLBACK_DELAY_MS === 10000 && NOTES_BUFFERED_COMMIT_DELAY_MS === 0,
+    dropdownSelectionStillQueuesOnlineSave: DECISION_SAVE_DELAY_MS <= 1000
   });
 })();

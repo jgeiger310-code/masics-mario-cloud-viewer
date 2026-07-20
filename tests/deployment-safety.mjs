@@ -23,7 +23,7 @@ assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below $
 assert.match(index, /assets\/config\.js\?v=20260715-manifest-5844-2/, "Viewer must load the current protected config version");
 assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-3/, "Mounted Dropbox path resolver is missing");
 assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");
-assert.match(index, /assets\/notes-input-buffer\.js\?v=20260718-notes-input-buffer-1/, "Notes input performance buffer is missing");
+assert.match(index, /assets\/notes-input-buffer\.js\?v=20260720-notes-10s-idle-1/, "Notes input performance buffer is missing");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("assets/app.js"), "Notes input buffer must load before app.js");
 assert.ok(index.indexOf("notes-input-buffer.js") < index.indexOf("save-online-merge.js"), "Notes input buffer must load before online-save input listeners");
 assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260718-thumbnail-autopreview-1/, "Fast image thumbnail preview is missing");
@@ -33,7 +33,7 @@ assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-
 assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
 assert.match(index, /assets\/safe-preview\.js\?v=20260718-thumbnail-auto-1/, "Safe preview thumbnail cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
-assert.match(index, /assets\/save-online-merge\.js\?v=20260718-auth-redirect-1/, "Verified online save guard is missing");
+assert.match(index, /assets\/save-online-merge\.js\?v=20260720-notes-10s-idle-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/queue-performance\.css\?v=20260718-1/, "Queue performance containment CSS is missing");
 assert.doesNotMatch(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "XLSX dependency must not block normal review startup");
 assert.doesNotMatch(index, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/, "Mammoth dependency must not block normal review startup");
@@ -41,7 +41,7 @@ assert.doesNotMatch(index, /cdn\.jsdelivr\.net\/npm\/xlsx/, "XLSX CDN dependency
 assert.doesNotMatch(index, /autosave-online-v3\.js/, "Obsolete duplicate autosave shim must not return");
 
 assert.match(notesBuffer, /stopImmediatePropagation/, "Notes input buffer must stop per-keystroke legacy listeners");
-assert.match(notesBuffer, /SAVE_AFTER_IDLE_MS\s*=\s*750/, "Notes save debounce must remain enabled");
+assert.match(notesBuffer, /SAVE_AFTER_IDLE_MS\s*=\s*10000/, "Notes save debounce must wait for 10 seconds of idle typing");
 assert.match(notesBuffer, /masicsBufferedCommit/, "Notes input buffer must preserve the existing save pipeline after debounce");
 assert.match(notesBuffer, /addEventListener\("blur"/, "Notes input must flush immediately on blur");
 
@@ -86,6 +86,9 @@ for (const filename of [
 }
 assert.match(saveMerge, /Online verification failed/, "Save Online must verify by reading Dropbox back");
 assert.match(saveMerge, /mergeDecisions\(online\?\.decisions/, "Online and local decisions must still be merged");
+assert.match(saveMerge, /NOTES_FALLBACK_DELAY_MS\s*=\s*10000/, "Online notes autosave fallback must wait 10 seconds");
+assert.match(saveMerge, /NOTES_BUFFERED_COMMIT_DELAY_MS\s*=\s*0/, "Buffered notes commits should not get an extra online-save delay");
+assert.match(saveMerge, /DECISION_SAVE_DELAY_MS\s*=\s*900/, "Dropdown selection should still queue online save promptly");
 assert.match(saveMerge, /beforeunload/, "Pending save navigation warning is missing");
 assert.match(saveMerge, /MASICS_AUTH_REDIRECT_IN_PROGRESS/, "Pending save warning must allow Dropbox auth redirects");
 assert.match(saveMerge, /\.tag["']?:\s*"update"/, "Dropbox optimistic-concurrency update mode is missing");
