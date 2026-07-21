@@ -3,7 +3,7 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const VERSION = "20260720-notes-10s-idle-1";
+  const VERSION = "20260721-ai-note-merge-1";
   const NOTES_BUFFERED_COMMIT_DELAY_MS = 0;
   const NOTES_FALLBACK_DELAY_MS = 10000;
   const DECISION_SAVE_DELAY_MS = 900;
@@ -259,6 +259,23 @@
     return Number.isFinite(time) ? time : 0;
   }
 
+  function noteHasAINote(value) {
+    return String(value?.notes || "").includes("AI note:");
+  }
+
+  function notesWithPreservedAINote(current, candidate) {
+    if (!noteHasAINote(current) || noteHasAINote(candidate)) return candidate;
+    const currentNotes = String(current?.notes || "");
+    const marker = currentNotes.indexOf("AI note:");
+    if (marker < 0) return candidate;
+    const aiNote = currentNotes.slice(marker).trim();
+    const candidateNotes = String(candidate?.notes || "").replace(/\n+$/g, "");
+    return {
+      ...(candidate || {}),
+      notes: candidateNotes ? `${candidateNotes}\n\n${aiNote}` : aiNote
+    };
+  }
+
   function newerOrSafer(current, candidate) {
     if (String(current?.decision || "") === "delete" && String(candidate?.decision || "") !== "delete") return current;
     if (String(current?.decision || "") && !String(candidate?.decision || "")) return current;
@@ -269,7 +286,10 @@
 
   function mergeDecisions(online, local) {
     const merged = { ...(online || {}) };
-    Object.entries(local || {}).forEach(([id, value]) => { merged[id] = newerOrSafer(merged[id] || {}, value); });
+    Object.entries(local || {}).forEach(([id, value]) => {
+      const current = merged[id] || {};
+      merged[id] = newerOrSafer(current, notesWithPreservedAINote(current, value));
+    });
     return merged;
   }
 

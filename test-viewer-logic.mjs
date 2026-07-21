@@ -42,8 +42,9 @@ const trackerReport = read("assets/tracker-report.js");
 
 test("main viewer loads the 5844 save guard and not the duplicate autosave shim", () => {
   const html = read("index.html");
-  assert.match(html, /assets\/config\.js\?v=20260715-manifest-5844-2/);
-  assert.match(html, /assets\/save-online-merge\.js\?v=20260720-notes-10s-idle-1/);
+  assert.match(html, /assets\/config\.js\?v=20260721-ai-notes-live-1/);
+  assert.match(html, /assets\/app\.js\?v=20260721-ai-note-merge-1/);
+  assert.match(html, /assets\/save-online-merge\.js\?v=20260721-ai-note-merge-1/);
   assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/);
   assert.match(html, /Download All Missing Tags XLSX/);
   assert.doesNotMatch(html, /autosave-online-v3\.js/);
@@ -105,21 +106,47 @@ test("initial online sync merges with local progress instead of replacing it", (
   assert.match(fn, /filterKnownDecisions\(mergeDecisions\(online\.decisions, localProgress\.decisions \|\| \{\}\)\)/);
 });
 
+test("initial sync preserves online AI notes against stale browser-local notes", () => {
+  const code = [
+    extractFunction(app, "updatedAt"),
+    extractFunction(app, "noteHasAINote"),
+    extractFunction(app, "notesWithPreservedAINote"),
+    extractFunction(app, "hasReviewValue"),
+    extractFunction(app, "shouldReplaceDecision"),
+    extractFunction(app, "mergeDecisions"),
+    `globalThis.result = mergeDecisions({
+      sameTime: { decision: "missing", notes: "Mario original\\n\\nAI note: Online context", updatedAt: "2026-07-20T00:00:00Z" },
+      newerLocal: { decision: "missing", notes: "Old Mario\\n\\nAI note: Keep this", updatedAt: "2026-07-20T00:00:00Z" }
+    }, {
+      sameTime: { decision: "missing", notes: "Mario original", updatedAt: "2026-07-20T00:00:00Z" },
+      newerLocal: { decision: "missing", notes: "Edited Mario", updatedAt: "2026-07-21T00:00:00Z" }
+    });`
+  ].join("\n");
+  const context = {};
+  vm.runInNewContext(code, context);
+  assert.equal(context.result.sameTime.notes, "Mario original\n\nAI note: Online context");
+  assert.equal(context.result.newerLocal.notes, "Edited Mario\n\nAI note: Keep this");
+});
+
 test("save merge protects newer online decisions from stale local sessions", () => {
   const code = [
     extractFunction(saveMerge, "hasValue"),
     extractFunction(saveMerge, "updatedAt"),
+    extractFunction(saveMerge, "noteHasAINote"),
+    extractFunction(saveMerge, "notesWithPreservedAINote"),
     extractFunction(saveMerge, "newerOrSafer"),
     extractFunction(saveMerge, "mergeDecisions"),
     `globalThis.result = mergeDecisions({
       keep: { decision: "missing", notes: "new online", updatedAt: "2026-07-15T01:00:00Z" },
       blank: { decision: "responsive", notes: "online value", updatedAt: "2026-07-15T01:00:00Z" },
-      deleted: { decision: "delete", notes: "excluded", updatedAt: "2026-07-15T01:00:00Z" }
+      deleted: { decision: "delete", notes: "excluded", updatedAt: "2026-07-15T01:00:00Z" },
+      ai: { decision: "missing", notes: "Mario\\n\\nAI note: Preserve online AI", updatedAt: "2026-07-15T01:00:00Z" }
     }, {
       keep: { decision: "responsive", notes: "old local", updatedAt: "2026-07-14T01:00:00Z" },
       blank: { decision: "", notes: "", updatedAt: "2026-07-15T02:00:00Z" },
       deleted: { decision: "missing", notes: "later local", updatedAt: "2026-07-15T02:00:00Z" },
-      adopt: { decision: "duplicate", notes: "fresh local", updatedAt: "2026-07-15T02:00:00Z" }
+      adopt: { decision: "duplicate", notes: "fresh local", updatedAt: "2026-07-15T02:00:00Z" },
+      ai: { decision: "missing", notes: "Mario", updatedAt: "2026-07-15T01:00:00Z" }
     });`
   ].join("\n");
   const context = {};
@@ -128,10 +155,11 @@ test("save merge protects newer online decisions from stale local sessions", () 
   assert.equal(context.result.blank.decision, "responsive");
   assert.equal(context.result.deleted.decision, "delete");
   assert.equal(context.result.adopt.decision, "duplicate");
+  assert.equal(context.result.ai.notes, "Mario\n\nAI note: Preserve online AI");
 });
 
 test("save path writes progress, full status csv, marked csv, audit, and manual snapshots", () => {
-  assert.match(saveMerge, /20260720-notes-10s-idle-1/);
+  assert.match(saveMerge, /20260721-ai-note-merge-1/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_PROGRESS_LATEST\.json/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_STATUS_LATEST\.csv/);
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/);

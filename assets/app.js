@@ -183,6 +183,23 @@
     return Number.isFinite(time) ? time : 0;
   }
 
+  function noteHasAINote(value) {
+    return String(value?.notes || "").includes("AI note:");
+  }
+
+  function notesWithPreservedAINote(current, candidate) {
+    if (!noteHasAINote(current) || noteHasAINote(candidate)) return candidate;
+    const currentNotes = String(current?.notes || "");
+    const marker = currentNotes.indexOf("AI note:");
+    if (marker < 0) return candidate;
+    const aiNote = currentNotes.slice(marker).trim();
+    const candidateNotes = String(candidate?.notes || "").replace(/\n+$/g, "");
+    return {
+      ...(candidate || {}),
+      notes: candidateNotes ? `${candidateNotes}\n\n${aiNote}` : aiNote
+    };
+  }
+
   function hasReviewValue(value) {
     return Boolean(value && (String(value.decision || "") || String(value.notes || "")));
   }
@@ -201,7 +218,8 @@
     const merged = { ...(onlineDecisions || {}) };
     Object.entries(localDecisions || {}).forEach(([reviewId, local]) => {
       const current = merged[reviewId] || {};
-      if (shouldReplaceDecision(current, local)) merged[reviewId] = local;
+      const candidate = notesWithPreservedAINote(current, local);
+      if (shouldReplaceDecision(current, candidate)) merged[reviewId] = candidate;
     });
     return merged;
   }

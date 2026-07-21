@@ -42,7 +42,7 @@ const manifest = {
 let online = {
   queueIdentity: "q1",
   total: 2,
-  decisions: { r2: { decision: "responsive", notes: "kept online", updatedAt: "2026-07-16T00:00:00.000Z" } }
+  decisions: { r2: { decision: "responsive", notes: "kept online\n\nAI note: preserve online ai", updatedAt: "2026-07-16T00:00:00.000Z" } }
 };
 let rev = "rev-a";
 let progressUploadAttempts = 0;
@@ -100,7 +100,7 @@ const context = {
       if (arg.path.endsWith("MASICS_MARIO_REVIEW_PROGRESS_LATEST.json")) {
         progressUploadAttempts += 1;
         if (progressUploadAttempts === 1) {
-          online.decisions.r2.notes = "updated by other browser";
+          online.decisions.r2.notes = "updated by other browser\n\nAI note: preserve online ai";
           rev = "rev-b";
           return response({ error_summary: "conflict" }, 409);
         }
@@ -135,7 +135,7 @@ await new Promise((resolve) => setTimeout(resolve, 10));
 assert.equal(progressUploadAttempts, 2, "progress save should retry after Dropbox rev conflict");
 assert.equal(online.decisions.r1.decision, "missing", "captured current mutation must be saved");
 assert.equal(online.decisions.r1.notes, "captured note", "captured notes must survive delayed save");
-assert.equal(online.decisions.r2.notes, "updated by other browser", "conflict retry must preserve newer online decision");
+assert.equal(online.decisions.r2.notes, "updated by other browser\n\nAI note: preserve online ai", "conflict retry must preserve newer online decision and its AI note");
 assert.ok(online.generationId, "progress generation id should be written");
 assert.ok(online.sourceProgressHash, "progress source hash should be written");
 assert.equal(localStorage.getItem("masics_cloud_progress:q1:dirty_unsynced"), null, "dirty marker should clear after verified save");

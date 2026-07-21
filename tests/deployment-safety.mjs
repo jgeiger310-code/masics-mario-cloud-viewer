@@ -20,7 +20,7 @@ assert.match(config, /expectedRecordCount:\s*5844\b/, "Protected queue minimum m
 const configuredMinimum = Number(config.match(/expectedRecordCount:\s*(\d+)/)?.[1] || 0);
 assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below ${protectedMinimum}`);
 
-assert.match(index, /assets\/config\.js\?v=20260715-manifest-5844-2/, "Viewer must load the current protected config version");
+assert.match(index, /assets\/config\.js\?v=20260721-ai-notes-live-1/, "Viewer must load the current protected config version");
 assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-3/, "Mounted Dropbox path resolver is missing");
 assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");
 assert.match(index, /assets\/notes-input-buffer\.js\?v=20260720-notes-10s-idle-1/, "Notes input performance buffer is missing");
@@ -30,10 +30,10 @@ assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260720-thumbnail-m
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("assets/app.js"), "Image thumbnails must register before the app selects records");
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
-assert.match(index, /assets\/app\.js\?v=20260718-auth-redirect-1/, "App auth-redirect cache bust is missing");
+assert.match(index, /assets\/app\.js\?v=20260721-ai-note-merge-1/, "App AI-note merge cache bust is missing");
 assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
-assert.match(index, /assets\/save-online-merge\.js\?v=20260720-notes-10s-idle-1/, "Verified online save guard is missing");
+assert.match(index, /assets\/save-online-merge\.js\?v=20260721-ai-note-merge-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/queue-performance\.css\?v=20260718-1/, "Queue performance containment CSS is missing");
 assert.doesNotMatch(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "XLSX dependency must not block normal review startup");
 assert.doesNotMatch(index, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/, "Mammoth dependency must not block normal review startup");
@@ -73,6 +73,7 @@ assert.match(app, /MASICS_AUTH_REDIRECT_IN_PROGRESS/, "Dropbox auth redirects mu
 assert.match(app, /MASICS_QUEUE_RECORDS = records/, "App must expose loaded records to the thumbnail helper without another manifest download");
 assert.match(app, /MASICS_ACTIVE_RECORD = record/, "App must expose the active record to the thumbnail helper");
 assert.match(app, /masics:record-change", \{ detail: \{ record \} \}/, "Record-change events must pass the active record to avoid redundant manifest reads");
+assert.match(app, /notesWithPreservedAINote/, "Initial sync must not let stale local notes erase online AI notes");
 
 assert.match(mountedResolver, /asciiHeaderJson/, "Unicode-safe Dropbox header encoding is missing");
 assert.match(mountedResolver, /files\/search_v2/, "Mounted-folder file-ID search fallback is missing");
@@ -90,6 +91,7 @@ for (const filename of [
 }
 assert.match(saveMerge, /Online verification failed/, "Save Online must verify by reading Dropbox back");
 assert.match(saveMerge, /mergeDecisions\(online\?\.decisions/, "Online and local decisions must still be merged");
+assert.match(saveMerge, /notesWithPreservedAINote/, "Save Online merge must not let stale local notes erase online AI notes");
 assert.match(saveMerge, /NOTES_FALLBACK_DELAY_MS\s*=\s*10000/, "Online notes autosave fallback must wait 10 seconds");
 assert.match(saveMerge, /NOTES_BUFFERED_COMMIT_DELAY_MS\s*=\s*0/, "Buffered notes commits should not get an extra online-save delay");
 assert.match(saveMerge, /DECISION_SAVE_DELAY_MS\s*=\s*900/, "Dropdown selection should still queue online save promptly");
