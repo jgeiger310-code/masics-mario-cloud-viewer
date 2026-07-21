@@ -1,0 +1,36 @@
+rules:
+  - id: masics-no-eval
+    message: Do not use eval in the reviewer. It makes code execution unsafe and hard to verify.
+    severity: ERROR
+    languages: [javascript]
+    pattern: eval(...)
+
+  - id: masics-no-new-function
+    message: Do not build executable code with new Function in the reviewer.
+    severity: ERROR
+    languages: [javascript]
+    pattern: new Function(...)
+
+  - id: masics-no-document-write
+    message: Do not use document.write in the reviewer. It can overwrite the page and create injection risk.
+    severity: ERROR
+    languages: [javascript]
+    pattern: document.write(...)
+
+  - id: masics-no-string-timer-code
+    message: Do not pass strings to setTimeout or setInterval. Use a function callback instead.
+    severity: ERROR
+    languages: [javascript]
+    patterns:
+      - pattern-either:
+          - pattern: setTimeout($CODE, ...)
+          - pattern: setInterval($CODE, ...)
+      - metavariable-regex:
+          metavariable: $CODE
+          regex: ^["']
+
+  - id: masics-no-hardcoded-dropbox-bearer-token
+    message: Do not hard-code Dropbox bearer tokens in reviewer source files.
+    severity: ERROR
+    languages: [javascript]
+    pattern-regex: "Authorization['\"]?\s*:\s*['\"]Bearer\s+(sl\.|sl\-|[A-Za-z0-9_-]{20,})"
