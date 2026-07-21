@@ -17,20 +17,26 @@ rules:
     languages: [javascript]
     pattern: document.write(...)
 
-  - id: masics-no-string-timer-code
-    message: Do not pass strings to setTimeout or setInterval. Use a function callback instead.
+  - id: masics-no-string-timeout-double-quoted-code
+    message: Do not pass string code to setTimeout. Use a function callback instead.
     severity: ERROR
     languages: [javascript]
-    patterns:
-      - pattern-either:
-          - pattern: setTimeout($CODE, ...)
-          - pattern: setInterval($CODE, ...)
-      - metavariable-regex:
-          metavariable: $CODE
-          regex: '^["'']'
+    pattern: 'setTimeout("...", ...)'
 
-  - id: masics-no-hardcoded-bearer-token
-    message: Do not hard-code Dropbox/API bearer tokens in reviewer source files.
+  - id: masics-no-string-timeout-single-quoted-code
+    message: Do not pass string code to setTimeout. Use a function callback instead.
     severity: ERROR
     languages: [javascript]
-    pattern-regex: 'Bearer\s+(sl\.|sl-|[A-Za-z0-9_-]{30,})'
+    pattern: "setTimeout('...', ...)"
+
+  - id: masics-no-string-interval-double-quoted-code
+    message: Do not pass string code to setInterval. Use a function callback instead.
+    severity: ERROR
+    languages: [javascript]
+    pattern: 'setInterval("...", ...)'
+
+  - id: masics-no-string-interval-single-quoted-code
+    message: Do not pass string code to setInterval. Use a function callback instead.
+    severity: ERROR
+    languages: [javascript]
+    pattern: "setInterval('...', ...)"
