@@ -46,6 +46,7 @@ jobs:
             "tests/ai-note-hydrator-behavior.mjs"
             "tests/storage-fallback-behavior.mjs"
             "tests/project-separation-guard.mjs"
+            "tests/search-core.test.mjs"
           )
           for test_file in "${required_tests[@]}"; do
             if [ ! -f "$test_file" ]; then
@@ -54,6 +55,9 @@ jobs:
             fi
             node "$test_file"
           done
+
+      - name: Check search catalog builder
+        run: python3 -m py_compile scripts/search_catalog_lib.py scripts/build_search_catalog.py
 
   static-quality:
     name: Static quality and dependency checks
