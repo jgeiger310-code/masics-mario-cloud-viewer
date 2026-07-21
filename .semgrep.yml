@@ -27,10 +27,10 @@ rules:
           - pattern: setInterval($CODE, ...)
       - metavariable-regex:
           metavariable: $CODE
-          regex: ^["']
+          regex: '^["'']'
 
-  - id: masics-no-hardcoded-dropbox-bearer-token
-    message: Do not hard-code Dropbox bearer tokens in reviewer source files.
+  - id: masics-no-hardcoded-bearer-token
+    message: Do not hard-code Dropbox/API bearer tokens in reviewer source files.
     severity: ERROR
     languages: [javascript]
-    pattern-regex: "Authorization['\"]?\s*:\s*['\"]Bearer\s+(sl\.|sl\-|[A-Za-z0-9_-]{20,})"
+    pattern-regex: 'Bearer\s+(sl\.|sl-|[A-Za-z0-9_-]{30,})'
