@@ -30,7 +30,7 @@ jobs:
       - name: Syntax-check JavaScript and test files
         run: |
           set -euo pipefail
-          find assets tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
+          find assets tests tools -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
           if [ -f test-viewer-logic.mjs ]; then
             node --check test-viewer-logic.mjs
           fi
@@ -54,6 +54,31 @@ jobs:
             fi
             node "$test_file"
           done
+
+  static-quality:
+    name: Static quality and dependency checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install code-quality tools
+        run: npm install --no-audit --no-fund
+
+      - name: Run ESLint bug-risk checks
+        run: npm run lint
+
+      - name: Run dependency vulnerability audit
+        run: npm run audit:deps
+
+      - name: Run Prettier formatting check advisory
+        continue-on-error: true
+        run: npm run format:check
 
   semgrep:
     name: Semgrep CE static scan
