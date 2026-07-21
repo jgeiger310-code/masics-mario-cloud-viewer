@@ -56,8 +56,15 @@ jobs:
             node "$test_file"
           done
 
-      - name: Check search catalog builder
-        run: python3 -m py_compile scripts/search_catalog_lib.py scripts/build_search_catalog.py
+      - name: Check verified search catalog builder
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/search_catalog_lib.py \
+            scripts/build_search_catalog.py \
+            scripts/build_search_catalog_verified.py \
+            tests/test_search_catalog_verified.py
+          python3 -m unittest tests/test_search_catalog_verified.py
 
   static-quality:
     name: Static quality and dependency checks
