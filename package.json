@@ -1,0 +1,21 @@
+{
+  "name": "masics-mario-cloud-viewer",
+  "version": "0.0.0-private",
+  "private": true,
+  "type": "module",
+  "description": "Safety, lint, and verification tooling for the MASICS Mario Cloud Viewer.",
+  "scripts": {
+    "check:syntax": "find assets tests tools -type f \\( -name '*.js' -o -name '*.mjs' \\) -print0 | xargs -0 -n1 node --check && if [ -f test-viewer-logic.mjs ]; then node --check test-viewer-logic.mjs; fi",
+    "test:viewer": "node test-viewer-logic.mjs && node tests/deployment-safety.mjs && node tests/mounted-path-resolver.mjs && node tests/save-hardening-behavior.mjs && node tests/ai-note-hydrator-behavior.mjs && node tests/storage-fallback-behavior.mjs && node tests/project-separation-guard.mjs",
+    "lint": "eslint assets tests tools test-viewer-logic.mjs",
+    "format:check": "prettier --check \"**/*.{js,mjs,css,html,md,yml,yaml}\"",
+    "audit:deps": "npm audit --audit-level=high --omit=optional",
+    "verify:live-progress": "node tools/verify-live-progress.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0"
+  }
+}
