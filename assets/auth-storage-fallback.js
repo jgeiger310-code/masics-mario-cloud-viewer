@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260709-storage-quota-2";
+  const VERSION = "20260721-storage-quota-memory-1";
   const memory = Object.create(null);
   const managedKeys = new Set([
     "masics_access_token",
@@ -107,11 +107,13 @@
     const originalGet = Storage.prototype.getItem;
     const originalSet = Storage.prototype.setItem;
     const originalRemove = Storage.prototype.removeItem;
+    const memoryPreferred = new Set();
 
     Storage.prototype.getItem = function patchedGetItem(key) {
       const normalizedKey = String(key);
       const fromState = specialValue(normalizedKey);
       if (fromState !== null && fromState !== undefined && fromState !== "") return fromState;
+      if (memoryPreferred.has(normalizedKey) && Object.prototype.hasOwnProperty.call(memory, normalizedKey)) return memory[normalizedKey];
       const fromStorage = safeOriginalGet(this, originalGet, normalizedKey);
       if (fromStorage !== null && fromStorage !== undefined) return fromStorage;
       if (Object.prototype.hasOwnProperty.call(memory, normalizedKey)) return memory[normalizedKey];
@@ -126,8 +128,11 @@
       memory[normalizedKey] = normalizedValue;
       writeCookie(normalizedKey, normalizedValue);
       try {
-        return originalSet.call(this, normalizedKey, normalizedValue);
+        const result = originalSet.call(this, normalizedKey, normalizedValue);
+        memoryPreferred.delete(normalizedKey);
+        return result;
       } catch (err) {
+        memoryPreferred.add(normalizedKey);
         console.warn("MASICS storage fallback captured setItem failure", normalizedKey, err && err.message ? err.message : err);
         return undefined;
       }
@@ -136,6 +141,7 @@
     Storage.prototype.removeItem = function patchedRemoveItem(key) {
       const normalizedKey = String(key);
       delete memory[normalizedKey];
+      memoryPreferred.delete(normalizedKey);
       clearCookie(normalizedKey);
       try {
         return originalRemove.call(this, normalizedKey);
@@ -193,6 +199,7 @@
   window.MASICS_AUTH_STORAGE_FALLBACK_SELF_TEST = () => ({
     version: VERSION,
     storagePrototypePatched: Boolean(window.Storage && Storage.prototype && Storage.prototype.getItem),
+    failedWriteMemoryPreferred: /memoryPreferred/.test(Storage.prototype.getItem.toString()) && /memoryPreferred/.test(Storage.prototype.setItem.toString()),
     stateFallbackPresent: Boolean(currentStatePayload()),
     stateParamDecoded: (() => {
       try {

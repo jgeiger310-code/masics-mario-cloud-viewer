@@ -22,6 +22,7 @@ const configuredMinimum = Number(config.match(/expectedRecordCount:\s*(\d+)/)?.[
 assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below ${protectedMinimum}`);
 
 assert.match(index, /assets\/config\.js\?v=20260721-ai-notes-live-1/, "Viewer must load the current protected config version");
+assert.match(index, /assets\/auth-storage-fallback\.js\?v=20260721-storage-quota-memory-1/, "Storage fallback cache bust is missing");
 assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-3/, "Mounted Dropbox path resolver is missing");
 assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");
 assert.match(index, /assets\/notes-input-buffer\.js\?v=20260720-notes-10s-idle-1/, "Notes input performance buffer is missing");
@@ -78,6 +79,8 @@ assert.match(app, /MASICS_QUEUE_RECORDS = records/, "App must expose loaded reco
 assert.match(app, /MASICS_ACTIVE_RECORD = record/, "App must expose the active record to the thumbnail helper");
 assert.match(app, /masics:record-change", \{ detail: \{ record \} \}/, "Record-change events must pass the active record to avoid redundant manifest reads");
 assert.match(app, /notesWithPreservedAINote/, "Initial sync must not let stale local notes erase online AI notes");
+
+assert.match(read("assets/auth-storage-fallback.js"), /memoryPreferred/, "Storage fallback must prefer failed large writes over stale persisted values");
 
 assert.match(mountedResolver, /asciiHeaderJson/, "Unicode-safe Dropbox header encoding is missing");
 assert.match(mountedResolver, /files\/search_v2/, "Mounted-folder file-ID search fallback is missing");
