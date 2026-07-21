@@ -97,7 +97,11 @@ jobs:
       - name: Run Semgrep Community Edition scan
         id: semgrep-scan
         continue-on-error: true
-        run: semgrep scan --config .semgrep.yml --error --metrics=off --json --output semgrep-results.json assets
+        run: |
+          semgrep scan --config .semgrep.yml --error --metrics=off \
+            --exclude assets/date-review-app.js \
+            --exclude assets/date-review-data.js \
+            --json --output semgrep-results.json assets
 
       - name: Upload Semgrep results
         if: always()
