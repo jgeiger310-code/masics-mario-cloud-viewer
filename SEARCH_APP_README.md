@@ -47,7 +47,7 @@ The web app prefers `MASICS_SEARCH_CATALOG_LATEST.json.gz`, falls back to the un
 ## Validation
 
 ```bash
-node tests/search-core.test.js
+node tests/search-core.test.mjs
 python3 -m py_compile scripts/search_catalog_lib.py scripts/build_search_catalog.py
 node --check assets/search-core.js
 node --check assets/search-worker.js
