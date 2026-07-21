@@ -14,16 +14,18 @@ This adds a separate, read-only search page to the Mario review viewer. It does 
 
 ## Build the full OCR and transcript catalog
 
-Run this on the Mac where the Dropbox case folders are synced:
+Run the verified builder on the Mac where the Dropbox case folders are synced:
 
 ```bash
-python3 scripts/build_search_catalog.py
+python3 scripts/build_search_catalog_verified.py
 ```
+
+The verified builder excludes `*.source.txt` provenance files from transcript content. Those files document where a transcript came from; they are not spoken transcript text and must not appear as search matches or be selected instead of the actual transcript.
 
 The script auto-detects the normal Dropbox-Jake path. If needed:
 
 ```bash
-python3 scripts/build_search_catalog.py \
+python3 scripts/build_search_catalog_verified.py \
   --dropbox-root "/Users/jakegeiger/Library/CloudStorage/Dropbox-Jake/jake Geiger"
 ```
 
@@ -39,6 +41,7 @@ The web app prefers `MASICS_SEARCH_CATALOG_LATEST.json.gz`, falls back to the un
 - The builder requires the source database and canonical manifest record counts to agree.
 - It refuses duplicate or missing review IDs.
 - It does not edit evidence, notes, decisions, progress, OCR, or transcripts.
+- Transcript provenance files ending in `.source.txt` are excluded from searchable transcript content.
 - When multiple sidecars could belong to the same filename, it fails closed unless queue or context evidence safely identifies the correct sidecar.
 - Ambiguities are written to `MASICS_SEARCH_AMBIGUITIES_LATEST.csv`.
 - Dates extracted from text are search aids only and are not represented as authoritative legal dates.
@@ -48,7 +51,12 @@ The web app prefers `MASICS_SEARCH_CATALOG_LATEST.json.gz`, falls back to the un
 
 ```bash
 node tests/search-core.test.mjs
-python3 -m py_compile scripts/search_catalog_lib.py scripts/build_search_catalog.py
+python3 -m py_compile \
+  scripts/search_catalog_lib.py \
+  scripts/build_search_catalog.py \
+  scripts/build_search_catalog_verified.py \
+  tests/test_search_catalog_verified.py
+python3 -m unittest tests/test_search_catalog_verified.py
 node --check assets/search-core.js
 node --check assets/search-worker.js
 node --check assets/search-data.js
