@@ -5,29 +5,65 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: mario-viewer-safety-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  safety-checks:
+  viewer-regression:
+    name: Viewer regression checks
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Run deployment safety checks
-        run: node tests/deployment-safety.mjs
-      - name: Run mounted Dropbox path checks
-        run: node tests/mounted-path-resolver.mjs
-      - name: Run save hardening behavior checks
-        run: node tests/save-hardening-behavior.mjs
-      - name: Run AI note hydration behavior checks
-        run: node tests/ai-note-hydrator-behavior.mjs
-      - name: Run storage fallback behavior checks
-        run: node tests/storage-fallback-behavior.mjs
-      - name: Run project separation guard
-        run: node tests/project-separation-guard.mjs
+
+      - name: Syntax-check JavaScript and test files
+        run: |
+          set -euo pipefail
+          find assets tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
+          if [ -f test-viewer-logic.mjs ]; then
+            node --check test-viewer-logic.mjs
+          fi
+
+      - name: Run required viewer regression suite
+        run: |
+          set -euo pipefail
+          required_tests=(
+            "test-viewer-logic.mjs"
+            "tests/deployment-safety.mjs"
+            "tests/mounted-path-resolver.mjs"
+            "tests/save-hardening-behavior.mjs"
+            "tests/ai-note-hydrator-behavior.mjs"
+            "tests/storage-fallback-behavior.mjs"
+            "tests/project-separation-guard.mjs"
+          )
+          for test_file in "${required_tests[@]}"; do
+            if [ ! -f "$test_file" ]; then
+              echo "Required safety test is missing: $test_file" >&2
+              exit 1
+            fi
+            node "$test_file"
+          done
+
+  semgrep:
+    name: Semgrep CE static scan
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep Community Edition scan
+        run: semgrep scan --config auto --error --metrics=off
