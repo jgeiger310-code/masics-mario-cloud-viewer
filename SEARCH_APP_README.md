@@ -20,7 +20,7 @@ Run the verified builder on the Mac where the Dropbox case folders are synced:
 python3 scripts/build_search_catalog_verified.py
 ```
 
-The verified builder excludes `*.source.txt` provenance files from transcript content. Those files document where a transcript came from; they are not spoken transcript text and must not appear as search matches or be selected instead of the actual transcript.
+The verified builder is required. It excludes `*.source.txt` provenance files from transcript content. Those files document where a transcript came from; they are not spoken transcript text and must not appear as search matches or be selected instead of the actual transcript.
 
 The script auto-detects the normal Dropbox-Jake path. If needed:
 
