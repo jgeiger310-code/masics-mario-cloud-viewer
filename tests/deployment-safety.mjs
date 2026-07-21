@@ -13,6 +13,7 @@ const mountedResolver = read("assets/dropbox-mounted-path-resolver.js");
 const notesBuffer = read("assets/notes-input-buffer.js");
 const imageThumbnail = read("assets/image-thumbnail-preview.js");
 const saveMerge = read("assets/save-online-merge.js");
+const aiHydrator = read("assets/ai-note-local-hydrator.js");
 const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
 
@@ -34,6 +35,9 @@ assert.match(index, /assets\/app\.js\?v=20260721-ai-note-merge-1/, "App AI-note 
 assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260721-ai-note-merge-1/, "Verified online save guard is missing");
+assert.match(index, /assets\/ai-note-local-hydrator\.js\?v=20260721-ai-note-hydrator-1/, "AI-note local hydrator is missing");
+assert.ok(index.indexOf("save-online-merge.js") < index.indexOf("ai-note-local-hydrator.js"), "AI-note hydrator must run after save merge wiring");
+assert.ok(index.indexOf("ai-note-local-hydrator.js") < index.indexOf("safe-preview.js"), "AI-note hydrator must run before preview helpers start reacting to the active record");
 assert.match(index, /assets\/queue-performance\.css\?v=20260718-1/, "Queue performance containment CSS is missing");
 assert.doesNotMatch(index, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/, "XLSX dependency must not block normal review startup");
 assert.doesNotMatch(index, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/, "Mammoth dependency must not block normal review startup");
@@ -104,6 +108,15 @@ assert.match(saveMerge, /generationId/, "Progress generation identity is missing
 assert.match(saveMerge, /sourceProgressHash/, "Progress source hash is missing");
 assert.match(saveMerge, /local_json_quarantine/, "Local JSON corruption quarantine is missing");
 assert.match(saveMerge, /saved decision count unexpectedly decreased/, "Whole-save decision-count verification is missing");
+
+assert.match(aiHydrator, /MASICS_AI_NOTE_HYDRATOR_VERSION/, "AI-note hydrator version flag is missing");
+assert.match(aiHydrator, /files\/download/, "AI-note hydrator must read the latest Dropbox progress");
+assert.doesNotMatch(aiHydrator.replace(/window\.MASICS_AI_NOTE_HYDRATOR_SELF_TEST[\s\S]*/, ""), /files\/upload/, "AI-note hydrator must not write to Dropbox");
+assert.match(aiHydrator, /AI note:/, "AI-note hydrator must search for AI notes");
+assert.match(aiHydrator, /localDecision === "delete"/, "AI-note hydrator must preserve delete decisions");
+assert.match(aiHydrator, /MASICS_QUEUE_RECORDS/, "AI-note hydrator must limit hydration to the loaded queue when available");
+assert.match(aiHydrator, /notes\.value/, "AI-note hydrator must refresh the visible notes field");
+assert.match(aiHydrator, /masics:record-change/, "AI-note hydrator must recover after async record selection");
 
 assert.match(missingExport, /String\(decision \|\| ""\)\.trim\(\)\.toLowerCase\(\) === "missing"/, "Missing export must remain decision-specific");
 assert.match(missingExport, /window\.XLSX\.writeFile/, "Missing XLSX writer is missing");
