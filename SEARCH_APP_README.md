@@ -46,6 +46,7 @@ The web app prefers `MASICS_SEARCH_CATALOG_LATEST.json.gz`, falls back to the un
 - Ambiguities are written to `MASICS_SEARCH_AMBIGUITIES_LATEST.csv`.
 - Dates extracted from text are search aids only and are not represented as authoritative legal dates.
 - The viewer can fall back to the metadata catalog if the full OCR/transcript catalog is temporarily unavailable.
+- The cloud-side inventory confirmed the final `SEARCH_INDEX` folder has not yet been generated; the verified local build is still required before deployment.
 
 ## Validation
 
