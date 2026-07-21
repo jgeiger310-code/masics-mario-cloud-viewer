@@ -16,6 +16,7 @@ import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -92,6 +93,7 @@ def clean_text(value: str, limit: int) -> tuple[str, bool]:
     return text[:limit], truncated
 
 
+@lru_cache(maxsize=20_000)
 def read_text(path: Path, limit: int) -> tuple[str, bool]:
     raw = path.read_bytes()
     for encoding in ("utf-8-sig", "utf-8", "utf-16", "latin-1"):

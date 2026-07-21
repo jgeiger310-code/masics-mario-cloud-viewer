@@ -14,6 +14,7 @@ from build_search_catalog_verified import (  # noqa: E402
     build_sidecar_maps_without_provenance,
     is_provenance_sidecar,
 )
+from search_catalog_lib import read_text  # noqa: E402
 
 
 class VerifiedCatalogBuilderTests(unittest.TestCase):
@@ -41,6 +42,20 @@ class VerifiedCatalogBuilderTests(unittest.TestCase):
             self.assertNotIn("call.source.txt", all_candidates)
             self.assertNotIn("only_provenance.source.txt", all_candidates)
             self.assertTrue(all(not name.lower().endswith(".source.txt") for name in all_candidates))
+
+    def test_sidecar_text_reads_are_cached(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "repeat.txt"
+            path.write_text("cached sidecar text", encoding="utf-8")
+
+            read_text.cache_clear()
+            before = read_text.cache_info()
+            self.assertEqual(read_text(path, 100), ("cached sidecar text", False))
+            self.assertEqual(read_text(path, 100), ("cached sidecar text", False))
+            after = read_text.cache_info()
+
+            self.assertEqual(after.misses - before.misses, 1)
+            self.assertEqual(after.hits - before.hits, 1)
 
 
 if __name__ == "__main__":
