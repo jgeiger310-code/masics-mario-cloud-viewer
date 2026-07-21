@@ -59,6 +59,7 @@ jobs:
       - name: Check verified search catalog builder
         run: |
           set -euo pipefail
+          bash -n scripts/prepare_search_catalog.sh
           python3 -m py_compile \
             scripts/search_catalog_lib.py \
             scripts/build_search_catalog.py \
