@@ -1,0 +1,24 @@
+# Generated/binary/vendor content should not be part of the code-quality gate.
+node_modules/**
+dist/**
+build/**
+coverage/**
+assets/vendor/**
+**/*.min.js
+**/*.map
+**/*.zip
+**/*.xlsx
+**/*.xls
+**/*.docx
+**/*.pdf
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.webp
+**/*.mp3
+**/*.mp4
+**/*.mov
+**/*.wav
+**/*.csv
+**/*.json
