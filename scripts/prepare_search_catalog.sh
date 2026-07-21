@@ -45,10 +45,12 @@ EXPORT_DIR="$DROPBOX_ROOT/Mario_Viewer_Exports/Solid_AI_And_Sidecar_Cleanup"
 OCR_DIR="$DROPBOX_ROOT/Mario_Viewer_Exports/Mario_FULL_Viewer_OCR_AI_Description_Output_20260720/ocr_text_by_record"
 TRANSCRIPT_DIR="$EXPORT_DIR/CANONICAL_TRANSCRIPTS_BY_STEM"
 OUTPUT_DIR="$VIEWER_DIR/SEARCH_INDEX"
+MANIFEST="$VIEWER_DIR/MASICS_MARIO_QUEUE_MANIFEST_V1.json"
+PROGRESS="$VIEWER_DIR/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json"
 
 required_paths=(
-  "$VIEWER_DIR/MASICS_MARIO_QUEUE_MANIFEST_V1.json"
-  "$VIEWER_DIR/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json"
+  "$MANIFEST"
+  "$PROGRESS"
   "$EXPORT_DIR"
   "$OCR_DIR"
   "$TRANSCRIPT_DIR"
@@ -60,15 +62,44 @@ for required in "${required_paths[@]}"; do
   fi
 done
 
-if ! find "$EXPORT_DIR" -maxdepth 1 -type f -name 'SEARCHABLE_FILE_INDEX_*.csv' -print -quit | grep -q .; then
+SOURCE_CSV="$(python3 - "$EXPORT_DIR" <<'PY'
+import sys
+from pathlib import Path
+folder = Path(sys.argv[1])
+matches = [path for path in folder.glob("SEARCHABLE_FILE_INDEX_*.csv") if path.is_file()]
+if not matches:
+    raise SystemExit(1)
+print(max(matches, key=lambda path: (path.stat().st_mtime_ns, path.name)))
+PY
+)" || {
   echo "ERROR: No SEARCHABLE_FILE_INDEX_*.csv was found in $EXPORT_DIR" >&2
   exit 1
-fi
+}
 
-echo "Repository:   $REPO_ROOT"
-echo "Branch:       $CURRENT_BRANCH"
-echo "Dropbox root: $DROPBOX_ROOT"
-echo "Output:       $OUTPUT_DIR"
+HASH_SNAPSHOT="$(mktemp -t masics-search-inputs.XXXXXX)"
+trap 'rm -f "$HASH_SNAPSHOT"' EXIT
+python3 - "$HASH_SNAPSHOT" "$MANIFEST" "$PROGRESS" "$SOURCE_CSV" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+def digest(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+snapshot = {str(Path(value).resolve()): digest(Path(value)) for value in sys.argv[2:]}
+Path(sys.argv[1]).write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+PY
+
+echo "Repository:    $REPO_ROOT"
+echo "Branch:        $CURRENT_BRANCH"
+echo "Dropbox root:  $DROPBOX_ROOT"
+echo "Source catalog: $SOURCE_CSV"
+echo "Output:        $OUTPUT_DIR"
 echo
 
 echo "Running search and builder safety tests..."
@@ -94,28 +125,84 @@ for output in "$SUMMARY" "$CATALOG_GZ" "$AMBIGUITIES"; do
   fi
 done
 
+python3 - "$HASH_SNAPSHOT" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+def digest(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+snapshot = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+changed = []
+for raw_path, before in snapshot.items():
+    path = Path(raw_path)
+    after = digest(path)
+    if after != before:
+        changed.append((raw_path, before, after))
+if changed:
+    print("ERROR: A protected source changed while the catalog was being built.", file=sys.stderr)
+    for path, before, after in changed:
+        print(f"  {path}\n    before {before}\n    after  {after}", file=sys.stderr)
+    print("Do not approve this build. Rerun when Mario is not actively saving.", file=sys.stderr)
+    raise SystemExit(1)
+print("Protected manifest, progress, and source-catalog hashes remained unchanged.")
+PY
+
 echo
-python3 - "$SUMMARY" "$AMBIGUITIES" <<'PY'
+python3 - "$SUMMARY" "$AMBIGUITIES" "$CATALOG_GZ" "$SOURCE_CSV" <<'PY'
 import csv
+import gzip
+import hashlib
 import json
 import sys
 from pathlib import Path
 
 summary_path = Path(sys.argv[1])
 ambiguity_path = Path(sys.argv[2])
+catalog_gz = Path(sys.argv[3])
+source_csv = Path(sys.argv[4])
 summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+with source_csv.open("r", encoding="utf-8-sig", newline="") as handle:
+    source_count = sum(1 for _ in csv.DictReader(handle))
 with ambiguity_path.open("r", encoding="utf-8-sig", newline="") as handle:
     ambiguity_count = sum(1 for _ in csv.DictReader(handle))
 
+record_count = int(summary.get("record_count", 0))
+if record_count != source_count:
+    raise SystemExit(f"ERROR: Built record count {record_count:,} does not match source count {source_count:,}.")
+
+def hash_stream(handle) -> str:
+    hasher = hashlib.sha256()
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        hasher.update(chunk)
+    return hasher.hexdigest()
+
+with catalog_gz.open("rb") as handle:
+    gzip_hash = hash_stream(handle)
+with gzip.open(catalog_gz, "rb") as handle:
+    catalog_hash = hash_stream(handle)
+if gzip_hash != summary.get("gzip_sha256"):
+    raise SystemExit("ERROR: Compressed catalog hash does not match the build summary.")
+if catalog_hash != summary.get("catalog_sha256"):
+    raise SystemExit("ERROR: Decompressed catalog hash does not match the build summary.")
+
 print("Verified catalog build summary")
-print(f"  Records:                 {summary.get('record_count', 0):,}")
+print(f"  Source records:          {source_count:,}")
+print(f"  Built records:           {record_count:,}")
 print(f"  OCR text records:        {summary.get('ocr_text_records', 0):,}")
 print(f"  Transcript text records: {summary.get('transcript_text_records', 0):,}")
 print(f"  Ambiguity rows:          {ambiguity_count:,}")
 print(f"  Catalog JSON bytes:      {summary.get('catalog_json_bytes', 0):,}")
 print(f"  Catalog gzip bytes:      {summary.get('catalog_gzip_bytes', 0):,}")
-print(f"  Catalog SHA-256:         {summary.get('catalog_sha256', '')}")
-print(f"  Gzip SHA-256:            {summary.get('gzip_sha256', '')}")
+print(f"  Catalog SHA-256:         {catalog_hash}")
+print(f"  Gzip SHA-256:            {gzip_hash}")
 
 safety = summary.get("safety") or {}
 expected = {
@@ -128,6 +215,7 @@ for key, value in expected.items():
     if safety.get(key) != value:
         raise SystemExit(f"ERROR: Safety summary failed for {key}: {safety.get(key)!r}")
 print("  Safety summary:          PASS")
+print("  Catalog hash validation: PASS")
 PY
 
 echo
