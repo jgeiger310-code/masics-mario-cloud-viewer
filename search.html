@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data: blob: https://*.dropboxusercontent.com https://*.dl.dropboxusercontent.com; media-src 'self' blob: https://*.dropboxusercontent.com https://*.dl.dropboxusercontent.com; frame-src 'self' blob: https://*.dropboxusercontent.com https://*.dl.dropboxusercontent.com; connect-src 'self' https://www.dropbox.com https://api.dropboxapi.com https://content.dropboxapi.com https://*.dropboxusercontent.com https://*.dl.dropboxusercontent.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>MASICS Evidence Search</title>
+  <link rel="stylesheet" href="assets/search.css?v=20260721-1">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">MASICS CASE DATABASE</p>
+      <h1>Evidence Search</h1>
+      <p id="status-line" class="status-line">Sign in with Dropbox to load the current review list (read-only search — does not edit or save to the viewer).</p>
+    </div>
+    <nav class="header-actions" aria-label="Application">
+      <a class="button ghost" href="./">Review Viewer</a>
+      <button id="sign-in" class="button primary" type="button">Sign in with Dropbox</button>
+      <button id="sign-out" class="button ghost" type="button" hidden>Sign out</button>
+    </nav>
+  </header>
+
+  <main class="app-shell">
+    <section class="search-panel" aria-labelledby="search-heading">
+      <div class="search-heading-row">
+        <div>
+          <h2 id="search-heading">Search the evidence database</h2>
+          <p>Search filenames, Mario’s notes, AI descriptions, OCR, transcripts, file paths, IDs, and review tags.</p>
+        </div>
+        <span id="catalog-badge" class="catalog-badge">Not loaded</span>
+      </div>
+
+      <div class="query-row">
+        <label class="query-label" for="query">Search terms</label>
+        <div class="query-box">
+          <input id="query" type="search" autocomplete="off" spellcheck="false" placeholder='Try: "notice of claim", FOIL Farrington, filename:permit, -facebook'>
+          <button id="search-button" class="button primary" type="button">Search</button>
+        </div>
+        <p class="query-help">Use quotes for an exact phrase. Use filename:, path:, mario:, ai:, ocr:, transcript:, decision:, or type:. Put a minus sign before a term to exclude it.</p>
+      </div>
+
+      <details class="advanced" open>
+        <summary>Search options and filters</summary>
+        <div class="filter-grid">
+          <fieldset>
+            <legend>Match behavior</legend>
+            <label><input type="radio" name="match-mode" value="all" checked> Match all words</label>
+            <label><input type="radio" name="match-mode" value="any"> Match any word</label>
+            <label><input id="related-terms" type="checkbox" checked> Include related legal terms</label>
+            <label><input id="fuzzy-search" type="checkbox" checked> Correct likely misspellings</label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Review status</legend>
+            <div id="decision-filters" class="check-grid"></div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Content available</legend>
+            <label><input id="has-ocr" type="checkbox"> Has OCR text</label>
+            <label><input id="has-transcript" type="checkbox"> Has transcript</label>
+            <label for="file-type">File type</label>
+            <select id="file-type">
+              <option value="">All file types</option>
+            </select>
+          </fieldset>
+
+          <fieldset>
+            <legend>Location and range</legend>
+            <label for="folder-filter">Folder contains</label>
+            <input id="folder-filter" type="text" placeholder="Franklinville">
+            <div class="range-row">
+              <label for="queue-min">Queue from<input id="queue-min" type="number" min="1" inputmode="numeric"></label>
+              <label for="queue-max">Queue to<input id="queue-max" type="number" min="1" inputmode="numeric"></label>
+            </div>
+          </fieldset>
+        </div>
+      </details>
+
+      <div class="saved-search-row">
+        <label for="saved-searches">Saved searches</label>
+        <select id="saved-searches"><option value="">Choose a saved search</option></select>
+        <button id="save-search" class="button ghost" type="button">Save current search</button>
+        <button id="clear-search" class="button ghost" type="button">Clear</button>
+      </div>
+    </section>
+
+    <section class="results-panel" aria-labelledby="results-heading">
+      <div class="results-toolbar">
+        <div>
+          <h2 id="results-heading">Results</h2>
+          <p id="result-count">No search has run.</p>
+          <p id="expansion-note" class="expansion-note" hidden></p>
+        </div>
+        <div class="results-actions">
+          <label for="sort-results">Sort</label>
+          <select id="sort-results">
+            <option value="relevance">Best match</option>
+            <option value="queue">Queue number</option>
+            <option value="filename">Filename</option>
+            <option value="decision">Review status</option>
+          </select>
+          <button id="select-page" class="button ghost" type="button">Select page</button>
+          <button id="export-selected" class="button ghost" type="button" disabled>Export selected CSV</button>
+          <button id="export-results" class="button primary" type="button" disabled>Export all results CSV</button>
+        </div>
+      </div>
+
+      <div id="loading-state" class="loading-state">
+        <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
+        <p id="loading-message">The protected catalog has not been loaded.</p>
+      </div>
+      <ol id="results-list" class="results-list" aria-live="polite"></ol>
+      <div id="pagination" class="pagination" hidden>
+        <button id="previous-page" class="button ghost" type="button">Previous</button>
+        <span id="page-status"></span>
+        <button id="next-page" class="button ghost" type="button">Next</button>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="preview-dialog" class="preview-dialog">
+    <div class="preview-header">
+      <div>
+        <p id="preview-position" class="eyebrow"></p>
+        <h2 id="preview-title">Evidence preview</h2>
+      </div>
+      <button id="close-preview" class="button ghost" type="button">Close</button>
+    </div>
+    <p id="preview-status" class="status-line"></p>
+    <div id="preview-body" class="preview-body"></div>
+    <div class="preview-actions">
+      <button id="preview-review" class="button ghost" type="button">Open in Review Viewer</button>
+      <button id="preview-dropbox" class="button primary" type="button">Open original</button>
+    </div>
+  </dialog>
+
+  <!-- auth-storage-fallback must load before search-data so OAuth state can carry PKCE + return_to=search -->
+  <script src="assets/config.js?v=20260723-search-oauth-2"></script>
+  <script src="assets/auth-storage-fallback.js?v=20260721-storage-quota-memory-1"></script>
+  <script src="assets/search-core.js?v=20260723-search-oauth-2"></script>
+  <script src="assets/search-data.js?v=20260723-search-oauth-2"></script>
+  <script src="assets/search-ui.js?v=20260723-search-oauth-2"></script>
+  <script src="assets/search-app.js?v=20260723-search-oauth-2"></script>
+</body>
+</html>
