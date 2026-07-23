@@ -37,21 +37,28 @@
   });
 
   const SYNONYM_GROUPS = [
-    ["foil", "public records", "public record", "freedom of information", "records request"],
-    ["certificate of occupancy", "c of o", "co certificate", "occupancy certificate"],
+    ["foil", "public records", "public record", "freedom of information", "records request", "foil request"],
+    ["certificate of occupancy", "c of o", "co certificate", "occupancy certificate", "c/o"],
     ["kennel", "dog license", "dog licensing", "canine license", "kennel permit"],
-    ["building permit", "permit", "code enforcement", "building code", "zoning permit"],
+    ["building permit", "code enforcement", "building code", "zoning permit"],
     ["town board", "board meeting", "meeting minutes", "town minutes"],
     ["missing", "not produced", "not disclosed", "withheld", "omitted"],
-    ["notice of claim", "claim notice", "noc"],
+    ["notice of claim", "claim notice", "noc", "notices of claim"],
     ["text message", "sms", "messenger message", "chat message"],
-    ["email", "e mail", "gmail message"],
-    ["privileged", "attorney client", "work product"]
+    ["email", "e-mail", "gmail message"],
+    ["privileged", "attorney client", "work product"],
+    // Local people / places (case-specific boosts for phrase discovery)
+    ["frank miller", "miller frank", "atty miller", "attorney miller"],
+    ["farrington", "lonnie farrington", "kay farrington", "the farringtons"],
+    ["franklinville", "town of franklinville", "franklinville ny"],
+    ["machias", "town of machias"]
   ];
 
+  // phrase -> list of related phrases (kept as phrases, not exploded into stopword-y tokens)
   const synonymLookup = new Map();
   SYNONYM_GROUPS.forEach((group) => {
-    group.forEach((phrase) => synonymLookup.set(normalizeText(phrase), group.map(normalizeText)));
+    const normalizedGroup = group.map(normalizeText).filter(Boolean);
+    normalizedGroup.forEach((phrase) => synonymLookup.set(phrase, normalizedGroup));
   });
 
   function normalizeText(value) {
@@ -122,24 +129,47 @@
     const negativePhrases = [];
     const regex = /(-)?(?:(\w+):)?(?:"([^"]+)"|(\S+))/g;
     let match;
+    let sawExplicitPhrase = false;
+    let sawFielded = false;
     while ((match = regex.exec(text))) {
       const negative = Boolean(match[1]);
       const rawField = String(match[2] || "").toLowerCase();
       const field = FIELD_ALIASES[rawField] || "";
+      if (field) sawFielded = true;
       const phrase = match[3];
       const term = match[4];
       if (phrase != null) {
+        sawExplicitPhrase = true;
         const normalized = normalizeText(phrase);
         if (!normalized) continue;
         (negative ? negativePhrases : phrases).push({ value: normalized, field });
       } else {
-        const normalizedTokens = tokenize(term, { keepStopWords: true });
+        // Drop stop words here — they are not indexed, so requiring them made
+        // queries like "notice of claim" / "certificate of occupancy" return 0 hits.
+        const normalizedTokens = tokenize(term, { keepStopWords: false });
         normalizedTokens.forEach((value) => {
           if (!value) return;
           (negative ? negativeTerms : positiveTerms).push({ value, field });
         });
       }
     }
+
+    // Unquoted multi-word free-text: also treat the full query as a phrase candidate.
+    // That recovers exact legal phrases and improves ranking without forcing quotes.
+    if (!sawExplicitPhrase && !sawFielded) {
+      const freeText = normalizeText(text.replace(/-/g, " "));
+      const contentTokens = tokenize(freeText, { keepStopWords: false });
+      if (contentTokens.length >= 2) {
+        phrases.push({ value: freeText, field: "", auto: true });
+      }
+      // Also register known synonym-group phrases present in the free text.
+      synonymLookup.forEach((_, phrase) => {
+        if (phrase.includes(" ") && freeText.includes(phrase) && phrase !== freeText) {
+          phrases.push({ value: phrase, field: "", auto: true });
+        }
+      });
+    }
+
     return { text, positiveTerms, negativeTerms, phrases, negativePhrases };
   }
 
@@ -263,21 +293,40 @@
     }
 
     relatedTerms(term) {
+      // Returns single-token expansions only (safe for inverted index).
+      // Multi-word synonym phrases are handled separately as phrase expansions.
       const normalized = normalizeText(term);
       const exactGroup = synonymLookup.get(normalized) || [];
       const parts = [];
-      exactGroup.forEach((phrase) => tokenize(phrase).forEach((token) => parts.push(token)));
-      return [...new Set(parts)].filter((token) => token !== normalized).slice(0, 12);
+      exactGroup.forEach((phrase) => {
+        if (phrase === normalized) return;
+        const tokens = tokenize(phrase, { keepStopWords: false });
+        // Only add single-token synonyms here (e.g. foil ↔ nothing multi-word).
+        // Multi-word phrases like "public records" must NOT explode into "public"+"records"
+        // or FOIL matches half the corpus.
+        if (tokens.length === 1) parts.push(tokens[0]);
+      });
+      return [...new Set(parts)].filter((token) => token && token !== normalized).slice(0, 8);
+    }
+
+    relatedPhrases(term) {
+      const normalized = normalizeText(term);
+      const exactGroup = synonymLookup.get(normalized) || [];
+      return exactGroup
+        .filter((phrase) => phrase && phrase !== normalized && phrase.includes(" "))
+        .slice(0, 8);
     }
 
     fuzzyTerms(term) {
-      if (term.length < 5) return [];
-      const maxDistance = term.length >= 8 ? 2 : 1;
+      // Short tokens (names like lilah) produce noisy fuzzy hits — require longer stems.
+      if (term.length < 6) return [];
+      const maxDistance = term.length >= 9 ? 2 : 1;
       const candidates = this.prefixVocabulary.get(term.slice(0, 3)) || [];
       return candidates
-        .filter((candidate) => candidate !== term && levenshtein(term, candidate, maxDistance) <= maxDistance)
+        .filter((candidate) => candidate !== term && Math.abs(candidate.length - term.length) <= maxDistance + 1)
+        .filter((candidate) => levenshtein(term, candidate, maxDistance) <= maxDistance)
         .sort((a, b) => levenshtein(term, a, maxDistance) - levenshtein(term, b, maxDistance) || a.localeCompare(b))
-        .slice(0, 8);
+        .slice(0, 6);
     }
 
     termPostings(term, field) {
@@ -302,10 +351,30 @@
       const matchedGroups = new Map();
       const expansionsUsed = [];
 
+      // Collect related multi-word phrases once (applied as soft phrase boosts, not AND tokens).
+      const relatedPhraseSet = new Map(); // value -> multiplier source label
+      if (useRelated) {
+        parsed.positiveTerms.forEach((queryTerm) => {
+          if (queryTerm.field) return;
+          this.relatedPhrases(queryTerm.value).forEach((phrase) => {
+            if (!relatedPhraseSet.has(phrase)) relatedPhraseSet.set(phrase, queryTerm.value);
+          });
+        });
+        // Whole-query synonym group (e.g. user typed "foil")
+        const free = normalizeText(parsed.text.replace(/\w+:/g, " ").replace(/"/g, " ").replace(/-/g, " "));
+        if (free && synonymLookup.has(free)) {
+          synonymLookup.get(free).forEach((phrase) => {
+            if (phrase.includes(" ") && phrase !== free && !relatedPhraseSet.has(phrase)) {
+              relatedPhraseSet.set(phrase, free);
+            }
+          });
+        }
+      }
+
       parsed.positiveTerms.forEach((queryTerm, groupIndex) => {
         const expansions = [{ term: queryTerm.value, multiplier: 1, reason: "exact" }];
-        if (useRelated) this.relatedTerms(queryTerm.value).forEach((term) => expansions.push({ term, multiplier: 0.5, reason: "related" }));
-        if (useFuzzy) this.fuzzyTerms(queryTerm.value).forEach((term) => expansions.push({ term, multiplier: 0.4, reason: "fuzzy" }));
+        if (useRelated) this.relatedTerms(queryTerm.value).forEach((term) => expansions.push({ term, multiplier: 0.55, reason: "related" }));
+        if (useFuzzy) this.fuzzyTerms(queryTerm.value).forEach((term) => expansions.push({ term, multiplier: 0.35, reason: "fuzzy" }));
         const deduped = new Map();
         expansions.forEach((item) => {
           if (!deduped.has(item.term) || deduped.get(item.term).multiplier < item.multiplier) deduped.set(item.term, item);
@@ -325,14 +394,25 @@
         });
       });
 
+      // Required content-word groups (stopwords already removed).
+      const positiveCount = parsed.positiveTerms.length;
+      // Auto phrases are soft (boost only). Explicit "quoted" phrases without auto flag are hard in ALL mode.
+      const hardPhrases = parsed.phrases.filter((phrase) => !phrase.auto);
+      const softPhrases = parsed.phrases.filter((phrase) => phrase.auto);
+
       let candidateIndexes;
       if (parsed.positiveTerms.length) candidateIndexes = [...scores.keys()];
-      else candidateIndexes = this.docs.map((_, index) => index);
+      else if (hardPhrases.length || softPhrases.length) {
+        // Phrase-only query: scan docs that contain at least one phrase later.
+        candidateIndexes = this.docs.map((_, index) => index);
+      } else {
+        candidateIndexes = this.docs.map((_, index) => index);
+      }
 
-      const positiveCount = parsed.positiveTerms.length;
       const normalizedNeedles = [
         ...parsed.positiveTerms.map((term) => term.value),
-        ...parsed.phrases.map((phrase) => phrase.value)
+        ...parsed.phrases.map((phrase) => phrase.value),
+        ...relatedPhraseSet.keys()
       ];
       const output = [];
 
@@ -351,16 +431,47 @@
         }
 
         let score = scores.get(docIndex) || 0;
-        let phraseMatches = 0;
-        for (const phrase of parsed.phrases) {
+        let hardPhraseMatches = 0;
+        for (const phrase of hardPhrases) {
           const matchedField = fieldMatchesPhrase(doc, phrase);
           if (!matchedField && matchMode === "all") return;
           if (matchedField) {
-            phraseMatches += 1;
-            score += 35 * (FIELD_WEIGHTS[matchedField] || 1);
+            hardPhraseMatches += 1;
+            score += 40 * (FIELD_WEIGHTS[matchedField] || 1);
           }
         }
-        if (parsed.phrases.length && matchMode === "any" && phraseMatches === 0 && matchedCount === 0) return;
+        if (hardPhrases.length && matchMode === "any" && hardPhraseMatches === 0 && matchedCount === 0) return;
+
+        // Soft auto-phrases: boost only (do not exclude). Prefer docs that contain the full phrase.
+        let softHits = 0;
+        for (const phrase of softPhrases) {
+          const matchedField = fieldMatchesPhrase(doc, phrase);
+          if (matchedField) {
+            softHits += 1;
+            score += 55 * (FIELD_WEIGHTS[matchedField] || 1);
+          }
+        }
+        // If user typed multi-word free text and we have soft phrases, prefer requiring
+        // either all content tokens (already applied) OR a soft phrase hit when tokens
+        // alone would be empty — already handled by positive terms.
+        // When multi-word AND produced candidates, boost exact-phrase docs strongly.
+        if (softPhrases.length && softHits === 0 && positiveCount >= 2) {
+          // mild penalty so non-phrase AND matches rank below true phrase hits
+          score *= 0.72;
+        }
+
+        relatedPhraseSet.forEach((source, phrase) => {
+          const matchedField = fieldMatchesPhrase(doc, { value: phrase, field: "" });
+          if (matchedField) {
+            score += 28 * (FIELD_WEIGHTS[matchedField] || 1);
+            expansionsUsed.push(`${source} → “${phrase}”`);
+          }
+        });
+
+        // Phrase-only queries (no tokens): keep docs that hit a phrase
+        if (!positiveCount && (hardPhrases.length || softPhrases.length)) {
+          if (hardPhraseMatches + softHits === 0) return;
+        }
 
         const normalizedQuery = normalizeText(parsed.text.replace(/\w+:/g, "").replace(/-/g, " ").replace(/"/g, ""));
         if (normalizedQuery && doc._fields.filename.includes(normalizedQuery)) score += 120;
