@@ -94,14 +94,25 @@
     sortedResults().slice((S.page - 1) * PAGE, S.page * PAGE).forEach((result) => S.selected.add(result.review_id));
     render();
   }
+  function scrubStarMarkers(value) {
+    return String(value || "")
+      .replace(/\*+/g, "")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .trim();
+  }
   function exportRows(kind) {
     const picks = kind === "selected" ? S.results.filter((result) => S.selected.has(result.review_id)) : S.results;
     return picks.map((result) => {
       const record = S.map.get(result.review_id) || {};
+      const isMissing = String(record.decision || "").toLowerCase() === "missing";
+      const mario = isMissing ? scrubStarMarkers(record.mario_notes) : (record.mario_notes || "");
+      const ai = isMissing ? scrubStarMarkers(record.ai_note) : (record.ai_note || "");
+      const excerpt = isMissing ? scrubStarMarkers(result.snippet) : (result.snippet || "");
       return {
         queue_number: record.queue_number, review_id: record.review_id, filename: record.filename, file_type: record.file_type,
-        decision: record.decision || "pending", dropbox_path: record.dropbox_path, mario_notes: record.mario_notes,
-        ai_note: record.ai_note, matched_field: result.matched_field, match_excerpt: result.snippet,
+        decision: record.decision || "pending", dropbox_path: record.dropbox_path, mario_notes: mario,
+        ai_note: ai, matched_field: result.matched_field, match_excerpt: excerpt,
         relevance_score: result.score, has_ocr: Boolean(record.has_ocr_sidecar || record.ocr_text),
         has_transcript: Boolean(record.has_transcript_sidecar || record.transcript_text)
       };

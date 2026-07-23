@@ -128,6 +128,24 @@
     const index = text.indexOf("AI note:");
     return index < 0 ? { mario: text.trim(), ai: "" } : { mario: text.slice(0, index).trim(), ai: text.slice(index + 8).trim() };
   }
+  /** Remove Mario marker stars (*, **, ***, ****, etc.) from note text for display/export. */
+  function scrubStarMarkers(value) {
+    return String(value || "")
+      .replace(/\*+/g, "")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+  function scrubRecordNotes(record) {
+    if (!record || typeof record !== "object") return record;
+    if (String(record.decision || "").toLowerCase() === "missing") {
+      if (record.mario_notes) record.mario_notes = scrubStarMarkers(record.mario_notes);
+      if (record.ai_note) record.ai_note = scrubStarMarkers(record.ai_note);
+      if (record.notes) record.notes = scrubStarMarkers(record.notes);
+    }
+    return record;
+  }
   /**
    * Source of truth = current viewer queue (manifest).
    * Catalog/CSV only enriches OCR/transcript/search text.
@@ -172,11 +190,20 @@
       if (!record) return;
       const notes = splitNotes(saved.notes);
       record.decision = saved.decision || record.decision || "";
+      // Always apply progress notes when present (including empty clear), then scrub missing stars.
+      if (saved.notes != null && saved.notes !== "") {
+        record.mario_notes = notes.mario || record.mario_notes || "";
+        record.ai_note = notes.ai || record.ai_note || "";
+      }
       if (notes.mario) record.mario_notes = notes.mario;
       if (notes.ai) record.ai_note = notes.ai;
       record.updated_at = saved.updatedAt || record.updated_at || "";
+      scrubRecordNotes(record);
     });
-    return [...byId.values()].filter((record) => record.review_id).sort((a, b) => Number(a.queue_number) - Number(b.queue_number));
+    return [...byId.values()]
+      .filter((record) => record.review_id)
+      .map(scrubRecordNotes)
+      .sort((a, b) => Number(a.queue_number) - Number(b.queue_number));
   }
   async function loadData() {
     const base = String(cfg.progressDropboxFolder || "").replace(/\/+$/g, "");
