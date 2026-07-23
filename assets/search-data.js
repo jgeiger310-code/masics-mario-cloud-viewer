@@ -128,18 +128,45 @@
     const index = text.indexOf("AI note:");
     return index < 0 ? { mario: text.trim(), ai: "" } : { mario: text.slice(0, index).trim(), ai: text.slice(index + 8).trim() };
   }
+  /**
+   * Source of truth = current viewer queue (manifest).
+   * Catalog/CSV only enriches OCR/transcript/search text.
+   * Progress is READ-ONLY overlay for current decisions/notes display.
+   * Archived or extra catalog rows that are not in the live manifest are dropped.
+   * Nothing here writes to Dropbox, SQLite, or the production viewer tracker.
+   */
   function mergeData(catalog, manifest, progress) {
-    const byId = new Map(catalog.map((record) => [String(record.review_id || record.id || ""), { ...record }]));
-    (manifest?.records || []).forEach((source) => {
+    const catalogById = new Map(
+      (catalog || []).map((record) => [String(record.review_id || record.id || ""), { ...record }])
+    );
+    const manifestRecords = manifest?.records || [];
+    if (!manifestRecords.length) {
+      throw new Error("Current queue list (manifest) is required. Search will not invent or keep a separate file list.");
+    }
+    const byId = new Map();
+    manifestRecords.forEach((source) => {
       const id = String(source.review_id || "");
-      const record = byId.get(id) || {};
+      if (!id) return;
+      const extra = catalogById.get(id) || {};
+      // Manifest wins for identity/path/queue; catalog may add ocr/transcript/search fields only.
       byId.set(id, {
-        ...source, ...record, review_id: id, filename: record.filename || source.filename,
-        dropbox_path: record.dropbox_path || source.dropbox_path,
-        dropbox_file_id: source.dropbox_file_id || record.dropbox_file_id,
-        dropbox_path_alternates: unique([source.dropbox_path_alternates || [], record.dropbox_path_alternates || []])
+        ...extra,
+        ...source,
+        review_id: id,
+        filename: source.filename || extra.filename,
+        dropbox_path: source.dropbox_path || extra.dropbox_path,
+        dropbox_file_id: source.dropbox_file_id || extra.dropbox_file_id,
+        dropbox_path_alternates: unique([source.dropbox_path_alternates || [], extra.dropbox_path_alternates || []]),
+        ocr_text: extra.ocr_text || source.ocr_text || "",
+        transcript_text: extra.transcript_text || source.transcript_text || "",
+        has_ocr_sidecar: extra.has_ocr_sidecar ?? source.has_ocr_sidecar,
+        has_transcript_sidecar: extra.has_transcript_sidecar ?? source.has_transcript_sidecar,
+        ai_note: source.ai_note || extra.ai_note || "",
+        mario_notes: source.mario_notes || extra.mario_notes || "",
+        decision: source.decision || extra.decision || ""
       });
     });
+    // Read-only: reflect Mario's current decisions/notes in search results; never save back.
     Object.entries(progress?.decisions || {}).forEach(([id, saved]) => {
       const record = byId.get(id);
       if (!record) return;
@@ -153,8 +180,12 @@
   }
   async function loadData() {
     const base = String(cfg.progressDropboxFolder || "").replace(/\/+$/g, "");
-    const [catalog, manifest, progress] = await Promise.all([
-      loadCatalog(),
+    // Manifest is required (current list). Catalog is optional enrichment. Progress is optional read-only overlay.
+    const [catalogResult, manifest, progress] = await Promise.all([
+      loadCatalog().catch((error) => {
+        console.warn("Search catalog enrichment unavailable; using current queue list only.", error);
+        return [];
+      }),
       optionalJson([cfg.manifestDropboxPath, cfg.manifestDropboxPathAlternates || []]),
       optionalJson([
         cfg.progressDropboxLatestJsonId,
@@ -162,8 +193,11 @@
         (cfg.progressDropboxFolderAlternates || []).map((folder) => `${String(folder).replace(/\/+$/g, "")}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`)
       ])
     ]);
-    const records = mergeData(catalog, manifest, progress);
-    if (!records.length) throw new Error("No searchable records were loaded.");
+    if (!manifest || !Array.isArray(manifest.records) || !manifest.records.length) {
+      throw new Error("Could not load the current queue list (MASICS_MARIO_QUEUE_MANIFEST). Search is read-only and must follow the live list.");
+    }
+    const records = mergeData(catalogResult || [], manifest, progress);
+    if (!records.length) throw new Error("No searchable records were loaded from the current queue list.");
     return records;
   }
   function createWorker() {
@@ -188,16 +222,51 @@
     S.worker.onerror = (event) => status(`Search engine failed: ${event.message || "unknown error"}`);
     S.worker.postMessage({ type: "build", records: S.records });
   }
+  function encodeOauthState(plainState, verifier, returnTo) {
+    // Same masics1 envelope as auth-storage-fallback so production index can recover
+    // PKCE verifier + return_to after the Dropbox redirect (sessionStorage does not cross localhost → github.io).
+    const payload = JSON.stringify({ s: plainState, v: verifier, r: returnTo || "", t: Date.now() });
+    const b64 = btoa(unescape(encodeURIComponent(payload)))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+    return `masics1.${b64}`;
+  }
+
   async function signIn() {
     if (!cfg.appKey || !cfg.redirectUri) throw new Error("Dropbox sign-in is not configured.");
-    const state = random64(24), verifier = random64(64), challenge = await sha64(verifier);
-    store.setItem("masics_oauth_state", state);
+    // Dropbox redirect_uri is production github.io. OAuth must start on that origin or return_to is lost
+    // and the user is stranded on the Mario viewer. Send them to production search first when needed.
+    let redirectBase;
+    try {
+      redirectBase = new URL(cfg.redirectUri);
+    } catch {
+      throw new Error("Dropbox redirect URI is invalid.");
+    }
+    if (location.origin !== redirectBase.origin) {
+      status("Opening the production Evidence Search page for Dropbox sign-in (required so you are not sent into the Mario review viewer)…");
+      location.href = new URL("search.html", cfg.redirectUri).href;
+      return;
+    }
+    const plainState = random64(24);
+    const verifier = random64(64);
+    const challenge = await sha64(verifier);
+    store.setItem("masics_oauth_state", plainState);
     store.setItem("masics_pkce_verifier", verifier);
     store.setItem("masics_auth_return_to", "search");
+    // Embed verifier + return_to in OAuth state (survives redirect even if storage is wiped).
+    const state = encodeOauthState(plainState, verifier, "search");
+    // Search tool is view/search only — never request Dropbox write scopes.
+    const readOnlyScopes = ["files.metadata.read", "files.content.read"];
     const query = new URLSearchParams({
-      client_id: cfg.appKey, response_type: "code", redirect_uri: cfg.redirectUri, state,
-      code_challenge: challenge, code_challenge_method: "S256", token_access_type: "online",
-      scope: (cfg.scopes || ["files.metadata.read", "files.content.read"]).join(" ")
+      client_id: cfg.appKey,
+      response_type: "code",
+      redirect_uri: cfg.redirectUri,
+      state,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      token_access_type: "online",
+      scope: readOnlyScopes.join(" ")
     });
     location.href = `https://www.dropbox.com/oauth2/authorize?${query}`;
   }

@@ -16,7 +16,7 @@
     <div>
       <p class="eyebrow">MASICS CASE DATABASE</p>
       <h1>Evidence Search</h1>
-      <p id="status-line" class="status-line">Sign in with Dropbox to load the protected search catalog.</p>
+      <p id="status-line" class="status-line">Sign in with Dropbox to load the current review list (read-only search — does not edit or save to the viewer).</p>
     </div>
     <nav class="header-actions" aria-label="Application">
       <a class="button ghost" href="./">Review Viewer</a>
@@ -140,10 +140,12 @@
     </div>
   </dialog>
 
-  <script src="assets/config.js?v=20260721-search-1"></script>
-  <script src="assets/search-core.js?v=20260721-1"></script>
-  <script src="assets/search-data.js?v=20260721-1"></script>
-  <script src="assets/search-ui.js?v=20260721-1"></script>
-  <script src="assets/search-app.js?v=20260721-1"></script>
+  <!-- auth-storage-fallback must load before search-data so OAuth state can carry PKCE + return_to=search -->
+  <script src="assets/config.js?v=20260723-search-oauth-2"></script>
+  <script src="assets/auth-storage-fallback.js?v=20260721-storage-quota-memory-1"></script>
+  <script src="assets/search-core.js?v=20260723-search-oauth-2"></script>
+  <script src="assets/search-data.js?v=20260723-search-oauth-2"></script>
+  <script src="assets/search-ui.js?v=20260723-search-oauth-2"></script>
+  <script src="assets/search-app.js?v=20260723-search-oauth-2"></script>
 </body>
 </html>
