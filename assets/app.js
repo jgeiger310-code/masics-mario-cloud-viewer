@@ -1083,10 +1083,20 @@
     try {
       const handled = await handleCallback();
       if (token || handled) {
-        if (handled && authStore.getItem("masics_auth_return_to") === "tracker") {
-          authStore.removeItem("masics_auth_return_to");
-          window.location.replace("tracker.html");
-          return;
+        // Return the user to the tool they signed in from — never dump Search/Tracker into the review queue by accident.
+        // REGRESSION (search OAuth): must run BEFORE loadManifest or the Mario viewer appears to "steal" the session.
+        if (handled) {
+          const returnTo = authStore.getItem("masics_auth_return_to") || "";
+          if (returnTo === "tracker") {
+            authStore.removeItem("masics_auth_return_to");
+            window.location.replace("tracker.html");
+            return;
+          }
+          if (returnTo === "search") {
+            authStore.removeItem("masics_auth_return_to");
+            window.location.replace("search.html");
+            return;
+          }
         }
         els.signIn.hidden = true;
         els.signOut.hidden = false;
