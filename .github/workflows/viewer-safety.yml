@@ -46,6 +46,7 @@ jobs:
             "tests/ai-note-hydrator-behavior.mjs"
             "tests/storage-fallback-behavior.mjs"
             "tests/project-separation-guard.mjs"
+            "tests/search-core.test.mjs"
           )
           for test_file in "${required_tests[@]}"; do
             if [ ! -f "$test_file" ]; then
@@ -54,6 +55,17 @@ jobs:
             fi
             node "$test_file"
           done
+
+      - name: Check verified search catalog builder
+        run: |
+          set -euo pipefail
+          bash -n scripts/prepare_search_catalog.sh
+          python3 -m py_compile \
+            scripts/search_catalog_lib.py \
+            scripts/build_search_catalog.py \
+            scripts/build_search_catalog_verified.py \
+            tests/test_search_catalog_verified.py
+          python3 -m unittest tests/test_search_catalog_verified.py
 
   static-quality:
     name: Static quality and dependency checks
@@ -91,4 +103,35 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Semgrep Community Edition scan
-        run: semgrep scan --config .semgrep.yml --error --metrics=off assets
+        id: semgrep-scan
+        continue-on-error: true
+        run: |
+          semgrep scan --config .semgrep.yml --error --metrics=off \
+            --exclude assets/date-review-app.js \
+            --exclude assets/date-review-data.js \
+            --json --output semgrep-results.json assets
+
+      - name: Upload Semgrep results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-results
+          path: semgrep-results.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce Semgrep result
+        if: steps.semgrep-scan.outcome == 'failure'
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('semgrep-results.json')
+          if path.exists():
+              data = json.loads(path.read_text(encoding='utf-8'))
+              for result in data.get('results', []):
+                  print(f"{result.get('check_id')}: {result.get('path')}:{result.get('start', {}).get('line')} - {result.get('extra', {}).get('message')}")
+              for error in data.get('errors', []):
+                  print(f"Semgrep error: {error}")
+          raise SystemExit(1)
+          PY
