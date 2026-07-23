@@ -34,4 +34,28 @@ assert.equal(engine.search("kennel", { related: true }).results[0].review_id, "b
 assert.equal(engine.search("license", { filters: { decisions: ["missing"] } }).total, 0);
 assert.equal(engine.search("", { filters: { hasOcr: true } }).total, 1);
 
+// Regression: stopwords must not zero multi-word legal phrases
+const legal = new core.SearchEngine([
+  {
+    review_id: "noc", queue_number: 10, filename: "Masic Notice of Claim.pdf", file_type: "pdf",
+    mario_notes: "filed notice of claim", ai_note: "", ocr_text: "NOTICE OF CLAIM against the Town",
+    dropbox_path: "/Franklinville/Masic Notice of Claim.pdf"
+  },
+  {
+    review_id: "co", queue_number: 11, filename: "occupancy.pdf", file_type: "pdf",
+    mario_notes: "", ai_note: "certificate of occupancy discussion", ocr_text: "",
+    dropbox_path: "/Franklinville/occupancy.pdf"
+  },
+  {
+    review_id: "unrelated", queue_number: 12, filename: "agenda.pdf", file_type: "pdf",
+    mario_notes: "public records workshop", ai_note: "records retention", ocr_text: "freedom of the press",
+    dropbox_path: "/Franklinville/agenda.pdf"
+  }
+]).build();
+assert.ok(legal.search("notice of claim").total >= 1, "unquoted notice of claim must hit");
+assert.ok(legal.search("certificate of occupancy").total >= 1, "unquoted certificate of occupancy must hit");
+// FOIL must not explode into every "public"/"records" document
+assert.equal(legal.search("FOIL").results.some((r) => r.review_id === "unrelated"), false,
+  "FOIL synonym expansion must not match loose public/records tokens alone");
+
 console.log("search-core tests passed");
