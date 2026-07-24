@@ -32,7 +32,7 @@ assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260720-thumbnail-m
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("assets/app.js"), "Image thumbnails must register before the app selects records");
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
-assert.match(index, /assets\/app\.js\?v=20260721-ai-note-merge-1/, "App AI-note merge cache bust is missing");
+assert.match(index, /assets\/app\.js\?v=20260723-search-oauth-return-2/, "App search OAuth return cache bust is missing");
 assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260721-ai-note-merge-1/, "Verified online save guard is missing");
@@ -79,6 +79,9 @@ assert.match(app, /MASICS_QUEUE_RECORDS = records/, "App must expose loaded reco
 assert.match(app, /MASICS_ACTIVE_RECORD = record/, "App must expose the active record to the thumbnail helper");
 assert.match(app, /masics:record-change", \{ detail: \{ record \} \}/, "Record-change events must pass the active record to avoid redundant manifest reads");
 assert.match(app, /notesWithPreservedAINote/, "Initial sync must not let stale local notes erase online AI notes");
+
+assert.match(config, /manifestDropboxPath:\s*"\/jake Geiger\/MARIO - OPEN THIS - MASICS REVIEW TOOL\/MASICS Review System Files\/MASICS_MARIO_CLOUD_VIEWER\/MASICS_MARIO_QUEUE_MANIFEST_V1\.json"/, "Current V1 manifest path must be the primary queue locator");
+assert.match(config, /manifestDropboxPathAlternates:\s*\[\s*"id:PzJJcyLjOoMAAAAAAAIkaw"/, "Old manifest file ID should remain fallback-only");
 
 assert.match(read("assets/auth-storage-fallback.js"), /memoryPreferred/, "Storage fallback must prefer failed large writes over stale persisted values");
 
