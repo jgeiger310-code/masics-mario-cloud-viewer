@@ -81,7 +81,8 @@ assert.match(app, /masics:record-change", \{ detail: \{ record \} \}/, "Record-c
 assert.match(app, /notesWithPreservedAINote/, "Initial sync must not let stale local notes erase online AI notes");
 
 assert.match(config, /manifestDropboxPath:\s*"\/MARIO - OPEN THIS - MASICS REVIEW TOOL\/MASICS Review System Files\/MASICS_MARIO_CLOUD_VIEWER\/MASICS_MARIO_QUEUE_MANIFEST_V1\.json"/, "Root-relative current V1 manifest path must be the primary queue locator");
-assert.match(config, /manifestDropboxPathAlternates:\s*\[\s*"\/jake Geiger\/MARIO - OPEN THIS - MASICS REVIEW TOOL\/MASICS Review System Files\/MASICS_MARIO_CLOUD_VIEWER\/MASICS_MARIO_QUEUE_MANIFEST_V1\.json",\s*"id:PzJJcyLjOoMAAAAAAAIkaw"/, "Old manifest file ID should remain last fallback only");
+assert.match(config, /manifestDropboxPathAlternates:\s*\[\s*"\/jake Geiger\/MARIO - OPEN THIS - MASICS REVIEW TOOL\/MASICS Review System Files\/MASICS_MARIO_CLOUD_VIEWER\/MASICS_MARIO_QUEUE_MANIFEST_V1\.json"\s*\]/, "Full mounted path should remain the only manifest fallback");
+assert.doesNotMatch(config, /manifestDropboxPathAlternates:[\s\S]*id:PzJJcyLjOoMAAAAAAAIkaw/, "Old 7469-row manifest file ID must not be a load fallback");
 
 assert.match(read("assets/auth-storage-fallback.js"), /memoryPreferred/, "Storage fallback must prefer failed large writes over stale persisted values");
 

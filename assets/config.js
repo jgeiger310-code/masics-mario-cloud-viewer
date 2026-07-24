@@ -3,8 +3,7 @@ window.MASICS_DROPBOX_CONFIG = Object.freeze({
   redirectUri: "https://jgeiger310-code.github.io/masics-mario-cloud-viewer/",
   manifestDropboxPath: "/MARIO - OPEN THIS - MASICS REVIEW TOOL/MASICS Review System Files/MASICS_MARIO_CLOUD_VIEWER/MASICS_MARIO_QUEUE_MANIFEST_V1.json",
   manifestDropboxPathAlternates: [
-    "/jake Geiger/MARIO - OPEN THIS - MASICS REVIEW TOOL/MASICS Review System Files/MASICS_MARIO_CLOUD_VIEWER/MASICS_MARIO_QUEUE_MANIFEST_V1.json",
-    "id:PzJJcyLjOoMAAAAAAAIkaw"
+    "/jake Geiger/MARIO - OPEN THIS - MASICS REVIEW TOOL/MASICS Review System Files/MASICS_MARIO_CLOUD_VIEWER/MASICS_MARIO_QUEUE_MANIFEST_V1.json"
   ],
   progressDropboxFolderId: "id:PzJJcyLjOoMAAAAAAAH0BQ",
   progressDropboxFolder: "/jake Geiger/MARIO - OPEN THIS - MASICS REVIEW TOOL/MASICS Review System Files/MASICS_MARIO_CLOUD_VIEWER",
