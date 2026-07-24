@@ -21,7 +21,7 @@ assert.match(config, /expectedRecordCount:\s*5844\b/, "Protected queue minimum m
 const configuredMinimum = Number(config.match(/expectedRecordCount:\s*(\d+)/)?.[1] || 0);
 assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below ${protectedMinimum}`);
 
-assert.match(index, /assets\/config\.js\?v=20260721-ai-notes-live-1/, "Viewer must load the current protected config version");
+assert.match(index, /assets\/config\.js\?v=20260724-active-manifest-path-1/, "Viewer must load the current protected config version");
 assert.match(index, /assets\/auth-storage-fallback\.js\?v=20260721-storage-quota-memory-1/, "Storage fallback cache bust is missing");
 assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-3/, "Mounted Dropbox path resolver is missing");
 assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");

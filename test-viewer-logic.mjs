@@ -42,7 +42,7 @@ const trackerReport = read("assets/tracker-report.js");
 
 test("main viewer loads the 5844 save guard and not the duplicate autosave shim", () => {
   const html = read("index.html");
-  assert.match(html, /assets\/config\.js\?v=20260721-ai-notes-live-1/);
+  assert.match(html, /assets\/config\.js\?v=20260724-active-manifest-path-1/);
   assert.match(html, /assets\/app\.js\?v=20260723-search-oauth-return-2/);
   assert.match(html, /assets\/save-online-merge\.js\?v=20260721-ai-note-merge-1/);
   assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/);
