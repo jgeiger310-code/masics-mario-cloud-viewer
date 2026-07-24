@@ -6,7 +6,9 @@
   "description": "Safety, lint, and verification tooling for the MASICS Mario Cloud Viewer.",
   "scripts": {
     "check:syntax": "find assets tests tools -type f \\( -name '*.js' -o -name '*.mjs' \\) -print0 | xargs -0 -n1 node --check && if [ -f test-viewer-logic.mjs ]; then node --check test-viewer-logic.mjs; fi",
-    "test:viewer": "node test-viewer-logic.mjs && node tests/deployment-safety.mjs && node tests/mounted-path-resolver.mjs && node tests/save-hardening-behavior.mjs && node tests/ai-note-hydrator-behavior.mjs && node tests/storage-fallback-behavior.mjs && node tests/project-separation-guard.mjs",
+    "test:search": "node tests/search-core.test.mjs && node tests/search-golden.test.mjs && node tests/search-oauth-return.test.mjs",
+    "test:viewer": "node test-viewer-logic.mjs && node tests/deployment-safety.mjs && node tests/mounted-path-resolver.mjs && node tests/save-hardening-behavior.mjs && node tests/ai-note-hydrator-behavior.mjs && node tests/storage-fallback-behavior.mjs && node tests/project-separation-guard.mjs && npm run test:search",
+    "test:all": "npm run check:syntax && npm run test:viewer",
     "lint": "eslint assets tests tools test-viewer-logic.mjs",
     "format:check": "prettier --check \"**/*.{js,mjs,css,html,md,yml,yaml}\"",
     "audit:deps": "npm audit --audit-level=high --omit=optional",
