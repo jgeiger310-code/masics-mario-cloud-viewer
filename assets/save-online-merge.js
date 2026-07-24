@@ -417,6 +417,7 @@
 
       const decisions = filteredKnown(records, mergeDecisions(online?.decisions || {}, local.decisions || {}));
       const rows = buildRows(records, decisions);
+      if (rows.length !== records.length) throw new Error("Online save aborted: generated status rows do not cover the full protected queue.");
       const reviewed = rows.filter((row) => row.reviewed).length;
       const excluded = rows.filter((row) => row.excluded).length;
       const exportedAt = new Date().toISOString();
@@ -497,8 +498,8 @@
       clearDirty();
       capturedMutation = null;
       const recordText = current ? `#${current.queue_number} ${current.filename}` : "current progress";
-      setSaveStatus(`${isAuto ? "Auto-saved" : "Saved"} and verified online: ${recordText}. Reviewed ${reviewed}, pending ${progress.pending}, excluded ${excluded}.${sidecarWarning}`);
-      setTopStatus(`Saved and verified online. Reviewed: ${reviewed}. Pending: ${progress.pending}. Excluded: ${excluded}. ${sidecarWarning || "Marked spreadsheet backup updated."}`);
+      setSaveStatus(`${isAuto ? "Auto-saved" : "Saved"} and verified online: ${recordText}. Total ${records.length}, reviewed ${reviewed}, pending ${progress.pending}, excluded ${excluded}.${sidecarWarning}`);
+      setTopStatus(`Saved and verified online. Total records: ${records.length}. Reviewed: ${reviewed}. Pending: ${progress.pending}. Excluded: ${excluded}. ${sidecarWarning || "Marked spreadsheet backup updated."}`);
     } finally {
       if (button) button.disabled = false;
     }

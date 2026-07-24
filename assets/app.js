@@ -308,6 +308,7 @@
     });
     const total = Math.max(0, records.length - excluded);
     return {
+      protectedTotal: records.length,
       total,
       reviewed,
       pending: Math.max(0, total - reviewed),
@@ -324,7 +325,7 @@
   function updateQueueSummary() {
     if (!els.counts) return;
     const counts = reviewCounts();
-    els.counts.textContent = `${counts.visible} shown | ${counts.reviewed} reviewed | ${counts.pending} pending | ${counts.excluded} excluded`;
+    els.counts.textContent = `${counts.visible} shown in current filter | ${counts.protectedTotal} total | ${counts.reviewed} reviewed | ${counts.pending} pending | ${counts.excluded} excluded`;
   }
 
   function updateReviewNavigation() {
@@ -649,11 +650,27 @@
     records = loaded.records;
     window.MASICS_QUEUE_RECORDS = records;
     const onlineSync = await syncOnlineProgressIntoBrowser();
-    const excluded = onlineSync.imported ? onlineSync.excluded || 0 : 0;
-    const reviewed = onlineSync.imported ? onlineSync.reviewed : loaded.reviewed_count;
-    const pending = Math.max(0, records.length - excluded - reviewed);
-    const source = onlineSync.imported ? " Synced online progress." : "";
-    setStatus(`Loaded ${records.length} protected queue records. Pending: ${pending}. Reviewed: ${reviewed}. Excluded: ${excluded}.${source}`);
+    // Always recompute from decision objects for the active queue — never trust stale footer/summary alone.
+    const progress = loadProgress();
+    const knownIds = records.map((r) => r.review_id);
+    let reviewed = 0;
+    let excluded = 0;
+    let pending = 0;
+    // Match save-path semantics: decision "delete" = excluded; any other non-empty decision = reviewed.
+    knownIds.forEach((id) => {
+      const saved = (progress.decisions || {})[id] || {};
+      const decision = String(saved.decision || "").trim();
+      if (decision === "delete") excluded += 1;
+      else if (decision) reviewed += 1;
+      else pending += 1;
+    });
+    if (onlineSync.imported) {
+      // Prefer online sync counts only when they match live recompute; otherwise show recompute.
+      if (Number(onlineSync.reviewed) === reviewed && Number(onlineSync.excluded || 0) === excluded) {
+        /* aligned */
+      }
+    }
+    const source = onlineSync.imported ? " Synced online progress." : " Counts from live decisions.";
     renderList();
     if (records.length) showRecord(records[0]);
     setStatus(`Loaded ${records.length} protected queue records. Pending: ${pending}. Reviewed: ${reviewed}. Excluded: ${excluded}.${source}`);

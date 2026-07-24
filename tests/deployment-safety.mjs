@@ -5,7 +5,7 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
-const protectedMinimum = 5844;
+const protectedMinimum = 7730;
 const config = read("assets/config.js");
 const index = read("index.html");
 const app = read("assets/app.js");
@@ -17,11 +17,11 @@ const aiHydrator = read("assets/ai-note-local-hydrator.js");
 const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
 
-assert.match(config, /expectedRecordCount:\s*5844\b/, "Protected queue minimum must remain 5,844");
+assert.match(config, /expectedRecordCount:\s*7730\b/, "Protected queue minimum must remain 7,730");
 const configuredMinimum = Number(config.match(/expectedRecordCount:\s*(\d+)/)?.[1] || 0);
 assert.ok(configuredMinimum >= protectedMinimum, `Protected minimum fell below ${protectedMinimum}`);
 
-assert.match(index, /assets\/config\.js\?v=20260724-active-manifest-path-2/, "Viewer must load the current protected config version");
+assert.match(index, /assets\/config\.js\?v=20260724-7730-count-guard-1/, "Viewer must load the current protected config version");
 assert.match(index, /assets\/auth-storage-fallback\.js\?v=20260721-storage-quota-memory-1/, "Storage fallback cache bust is missing");
 assert.match(index, /assets\/dropbox-mounted-path-resolver\.js\?v=20260718-mounted-folders-3/, "Mounted Dropbox path resolver is missing");
 assert.ok(index.indexOf("dropbox-mounted-path-resolver.js") < index.indexOf("assets/app.js"), "Mounted Dropbox path resolver must load before app.js");
@@ -32,10 +32,10 @@ assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260720-thumbnail-m
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("assets/app.js"), "Image thumbnails must register before the app selects records");
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
-assert.match(index, /assets\/app\.js\?v=20260723-search-oauth-return-2/, "App search OAuth return cache bust is missing");
+assert.match(index, /assets\/app\.js\?v=20260724-queue-count-clarity-1/, "App queue count clarity cache bust is missing");
 assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
-assert.match(index, /assets\/save-online-merge\.js\?v=20260721-ai-note-merge-1/, "Verified online save guard is missing");
+assert.match(index, /assets\/save-online-merge\.js\?v=20260724-save-total-guard-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/ai-note-local-hydrator\.js\?v=20260721-ai-note-hydrator-1/, "AI-note local hydrator is missing");
 assert.ok(index.indexOf("save-online-merge.js") < index.indexOf("ai-note-local-hydrator.js"), "AI-note hydrator must run after save merge wiring");
 assert.ok(index.indexOf("ai-note-local-hydrator.js") < index.indexOf("safe-preview.js"), "AI-note hydrator must run before preview helpers start reacting to the active record");
@@ -83,6 +83,7 @@ assert.match(app, /notesWithPreservedAINote/, "Initial sync must not let stale l
 assert.match(config, /manifestDropboxPath:\s*"\/MARIO - OPEN THIS - MASICS REVIEW TOOL\/MASICS Review System Files\/MASICS_MARIO_CLOUD_VIEWER\/MASICS_MARIO_QUEUE_MANIFEST_V1\.json"/, "Root-relative current V1 manifest path must be the primary queue locator");
 assert.match(config, /manifestDropboxPathAlternates:\s*\[\s*"\/jake Geiger\/MARIO - OPEN THIS - MASICS REVIEW TOOL\/MASICS Review System Files\/MASICS_MARIO_CLOUD_VIEWER\/MASICS_MARIO_QUEUE_MANIFEST_V1\.json"\s*\]/, "Full mounted path should remain the only manifest fallback");
 assert.doesNotMatch(config, /manifestDropboxPathAlternates:[\s\S]*id:PzJJcyLjOoMAAAAAAAIkaw/, "Old 7469-row manifest file ID must not be a load fallback");
+assert.match(read("search.html"), /assets\/config\.js\?v=20260724-7730-count-guard-1/, "Search Files must load the same current protected config version");
 
 assert.match(read("assets/auth-storage-fallback.js"), /memoryPreferred/, "Storage fallback must prefer failed large writes over stale persisted values");
 
@@ -115,6 +116,8 @@ assert.match(saveMerge, /generationId/, "Progress generation identity is missing
 assert.match(saveMerge, /sourceProgressHash/, "Progress source hash is missing");
 assert.match(saveMerge, /local_json_quarantine/, "Local JSON corruption quarantine is missing");
 assert.match(saveMerge, /saved decision count unexpectedly decreased/, "Whole-save decision-count verification is missing");
+assert.match(saveMerge, /generated status rows do not cover the full protected queue/, "Save must abort if generated status rows do not cover every protected record");
+assert.match(saveMerge, /Total records: \$\{records\.length\}/, "Save confirmation must show protected total count");
 
 assert.match(aiHydrator, /MASICS_AI_NOTE_HYDRATOR_VERSION/, "AI-note hydrator version flag is missing");
 assert.match(aiHydrator, /files\/download/, "AI-note hydrator must read the latest Dropbox progress");
