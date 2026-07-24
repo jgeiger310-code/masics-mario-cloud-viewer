@@ -35,7 +35,7 @@ assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-
 assert.match(index, /assets\/app\.js\?v=20260724-queue-count-clarity-2/, "App queue count clarity cache bust is missing");
 assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
-assert.match(index, /assets\/save-online-merge\.js\?v=20260724-save-total-guard-2/, "Verified online save guard is missing");
+assert.match(index, /assets\/save-online-merge\.js\?v=20260724-save-total-guard-3/, "Verified online save guard is missing");
 assert.match(index, /assets\/ai-note-local-hydrator\.js\?v=20260721-ai-note-hydrator-1/, "AI-note local hydrator is missing");
 assert.ok(index.indexOf("save-online-merge.js") < index.indexOf("ai-note-local-hydrator.js"), "AI-note hydrator must run after save merge wiring");
 assert.ok(index.indexOf("ai-note-local-hydrator.js") < index.indexOf("safe-preview.js"), "AI-note hydrator must run before preview helpers start reacting to the active record");
@@ -116,6 +116,9 @@ assert.match(saveMerge, /generationId/, "Progress generation identity is missing
 assert.match(saveMerge, /sourceProgressHash/, "Progress source hash is missing");
 assert.match(saveMerge, /local_json_quarantine/, "Local JSON corruption quarantine is missing");
 assert.match(saveMerge, /saved decision count unexpectedly decreased/, "Whole-save decision-count verification is missing");
+assert.match(saveMerge, /completeDecisionMap/, "Save Online must write blank pending decisions for every protected record");
+assert.match(saveMerge, /saved decision map does not cover the full protected queue/, "Read-back must reject partial progress decision maps");
+assert.match(saveMerge, /pending records are preserved as blank decision entries/, "Save policy must preserve pending records in progress JSON");
 assert.match(saveMerge, /generated status rows do not cover the full protected queue/, "Save must abort if generated status rows do not cover every protected record");
 assert.match(saveMerge, /Total records: \$\{records\.length\}/, "Save confirmation must show protected total count");
 

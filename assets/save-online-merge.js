@@ -3,7 +3,7 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const VERSION = "20260721-ai-note-merge-1";
+  const VERSION = "20260724-save-total-guard-3";
   const NOTES_BUFFERED_COMMIT_DELAY_MS = 0;
   const NOTES_FALLBACK_DELAY_MS = 10000;
   const DECISION_SAVE_DELAY_MS = 900;
@@ -329,14 +329,78 @@
     return [fullHeader, ...body].map((line) => line.map(csvEscape).join(",")).join("\r\n") + "\r\n";
   }
 
-  function filteredKnown(records, decisions) {
+  function completeDecisionMap(records, decisions) {
     const ids = new Set(records.map((r) => r.review_id));
     const out = {};
-    Object.entries(decisions || {}).forEach(([id, value]) => {
-      if (!ids.has(id) || !hasValue(value)) return;
-      out[id] = { decision: allowedDecision(value.decision), notes: String(value.notes || ""), updatedAt: String(value.updatedAt || "") };
+    records.forEach((record) => {
+      const id = record.review_id;
+      if (!id || !ids.has(id)) throw new Error("Online save aborted: queue manifest has a duplicate or missing review ID.");
+      const value = decisions?.[id] || {};
+      out[id] = {
+        decision: allowedDecision(value.decision),
+        notes: String(value.notes || ""),
+        updatedAt: String(value.updatedAt || "")
+      };
     });
     return out;
+  }
+
+  function verifyDecisionCoverage(records, decisions) {
+    const ids = new Set();
+    records.forEach((record) => {
+      const id = record.review_id;
+      if (!id || ids.has(id)) throw new Error("Online save aborted: queue manifest has a duplicate or missing review ID.");
+      ids.add(id);
+    });
+    const keys = Object.keys(decisions || {});
+    if (keys.length !== records.length) throw new Error("Online save aborted: progress decision map does not cover the full protected queue.");
+    for (const id of ids) {
+      if (!Object.prototype.hasOwnProperty.call(decisions, id)) throw new Error("Online save aborted: progress decision map is missing a protected queue record.");
+    }
+  }
+
+  function buildSavePayloads(records, decisions, exportedAt) {
+    verifyDecisionCoverage(records, decisions);
+    const rows = buildRows(records, decisions);
+    if (rows.length !== records.length) throw new Error("Online save aborted: generated status rows do not cover the full protected queue.");
+    const reviewed = rows.filter((row) => row.reviewed).length;
+    const excluded = rows.filter((row) => row.excluded).length;
+    const pending = Math.max(0, records.length - reviewed - excluded);
+    let progress = {
+      schema: "MASICS_MARIO_ONLINE_REVIEW_PROGRESS_V1",
+      queueIdentity: cfg().queueIdentity,
+      queueVersion: cfg().queueVersion,
+      trackerVersion: VERSION,
+      exportedAt,
+      source: "github-pages-cloud-viewer",
+      mergePolicy: "visible record is written from current controls before merge; online decisions preserved over blank values; pending records are preserved as blank decision entries",
+      reviewer: "Mario",
+      userAgent: navigator.userAgent,
+      url: location.href,
+      total: records.length,
+      reviewed,
+      excluded,
+      pending,
+      decisions,
+      tagged: rows.filter((row) => row.reviewed),
+      excludedRows: rows.filter((row) => row.excluded)
+    };
+    let progressText = JSON.stringify(progress, null, 2);
+    const generation = { hash: jsonHash(progressText), id: "" };
+    generation.id = generationId(exportedAt, progressText);
+    progress = { ...progress, generationId: generation.id, sourceProgressHash: generation.hash };
+    progressText = JSON.stringify(progress, null, 2);
+    return {
+      rows,
+      reviewed,
+      excluded,
+      pending,
+      progress,
+      progressText,
+      generation,
+      statusCsv: csv(rows, generation),
+      markedCsv: csv(markedRows(rows), generation)
+    };
   }
 
   function auditPayload(records, online, beforeLocal, decisions, exportedAt, current, controls, verified, generation) {
@@ -370,6 +434,7 @@
     if (!check || check.queueIdentity !== cfg().queueIdentity) throw new Error("Online verification failed: queue identity changed or progress did not reload.");
     if (Number(check.total || 0) !== records.length) throw new Error("Online verification failed: saved record count does not match the protected manifest.");
     const savedCount = Object.keys(check.decisions || {}).length;
+    if (savedCount !== records.length) throw new Error("Online verification failed: saved decision map does not cover the full protected queue.");
     if (savedCount < beforeDecisionCount) throw new Error("Online verification failed: saved decision count unexpectedly decreased.");
     for (const id of Object.keys(decisions || {})) {
       if (!check.decisions || !check.decisions[id]) throw new Error("Online verification failed: a merged decision disappeared after save.");
@@ -415,44 +480,14 @@
       }
       saveLocal(local);
 
-      const decisions = filteredKnown(records, mergeDecisions(online?.decisions || {}, local.decisions || {}));
-      const rows = buildRows(records, decisions);
-      if (rows.length !== records.length) throw new Error("Online save aborted: generated status rows do not cover the full protected queue.");
-      const reviewed = rows.filter((row) => row.reviewed).length;
-      const excluded = rows.filter((row) => row.excluded).length;
+      let decisions = completeDecisionMap(records, mergeDecisions(online?.decisions || {}, local.decisions || {}));
       const exportedAt = new Date().toISOString();
-      let progress = {
-        schema: "MASICS_MARIO_ONLINE_REVIEW_PROGRESS_V1",
-        queueIdentity: cfg().queueIdentity,
-        queueVersion: cfg().queueVersion,
-        trackerVersion: VERSION,
-        exportedAt,
-        source: "github-pages-cloud-viewer",
-        mergePolicy: "visible record is written from current controls before merge; online decisions preserved over blank values",
-        reviewer: "Mario",
-        userAgent: navigator.userAgent,
-        url: location.href,
-        total: records.length,
-        reviewed,
-        excluded,
-        pending: Math.max(0, records.length - reviewed - excluded),
-        decisions,
-        tagged: rows.filter((row) => row.reviewed),
-        excludedRows: rows.filter((row) => row.excluded)
-      };
-
-      let progressText = JSON.stringify(progress, null, 2);
-      const generation = { hash: jsonHash(progressText), id: "" };
-      generation.id = generationId(exportedAt, progressText);
-      progress = { ...progress, generationId: generation.id, sourceProgressHash: generation.hash };
-      progressText = JSON.stringify(progress, null, 2);
-      const statusCsv = csv(rows, generation);
-      const markedCsv = csv(markedRows(rows), generation);
+      let payloads = buildSavePayloads(records, decisions, exportedAt);
       let uploadMeta = null;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           const mode = onlineWithMeta?.rev ? { ".tag": "update", update: onlineWithMeta.rev } : { ".tag": "overwrite" };
-          uploadMeta = await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, progressText, mode);
+          uploadMeta = await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_LATEST.json`, payloads.progressText, mode);
           break;
         } catch (err) {
           if (!err.dropboxConflict || attempt >= 2) {
@@ -460,34 +495,31 @@
           }
           onlineWithMeta = await loadOnlineWithMetadata(base);
           online = onlineWithMeta?.json || null;
-          const retryDecisions = filteredKnown(records, mergeDecisions(online?.decisions || {}, local.decisions || {}));
-          progress.decisions = retryDecisions;
-          progress.tagged = buildRows(records, retryDecisions).filter((row) => row.reviewed);
-          progress.excludedRows = buildRows(records, retryDecisions).filter((row) => row.excluded);
-          progressText = JSON.stringify(progress, null, 2);
+          decisions = completeDecisionMap(records, mergeDecisions(online?.decisions || {}, local.decisions || {}));
+          payloads = buildSavePayloads(records, decisions, exportedAt);
         }
       }
       let sidecarWarning = "";
       try {
-        await upload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, statusCsv, "overwrite");
-        await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_LATEST.csv`, markedCsv, "overwrite");
+        await upload(`${base}/MASICS_MARIO_REVIEW_STATUS_LATEST.csv`, payloads.statusCsv, "overwrite");
+        await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_LATEST.csv`, payloads.markedCsv, "overwrite");
       } catch (err) {
         sidecarWarning = ` Progress JSON saved, but CSV backup sidecars are incomplete: ${err.message || err}`;
       }
       const checkWithMeta = await loadOnlineWithMetadata(base);
       const check = checkWithMeta?.json || null;
-      verifyWholeSave({ records, beforeDecisionCount: Object.keys(online?.decisions || {}).length, decisions, progress, check, current, controls, uploadMeta, expectedRev: onlineWithMeta?.rev || "" });
+      verifyWholeSave({ records, beforeDecisionCount: Object.keys(online?.decisions || {}).length, decisions, progress: payloads.progress, check, current, controls, uploadMeta, expectedRev: onlineWithMeta?.rev || "" });
       const verified = true;
 
       const stamp = exportedAt.replace(/[:.]/g, "-");
-      const audit = JSON.stringify(auditPayload(records, online, beforeLocal, decisions, exportedAt, current, controls, verified, generation), null, 2);
+      const audit = JSON.stringify(auditPayload(records, online, beforeLocal, decisions, exportedAt, current, controls, verified, payloads.generation), null, 2);
       try { await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_LATEST.json`, audit, "overwrite"); }
       catch (err) { sidecarWarning = `${sidecarWarning} Audit sidecar incomplete: ${err.message || err}`.trim(); }
       if (!isAuto) {
-        await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, progressText, "add");
+        await upload(`${base}/MASICS_MARIO_REVIEW_PROGRESS_${stamp}.json`, payloads.progressText, "add");
         try {
           await upload(`${base}/MASICS_MARIO_REVIEW_AUDIT_${stamp}.json`, audit, "add");
-          await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_${stamp}.csv`, markedCsv, "add");
+          await upload(`${base}/MASICS_MARIO_MARKED_REVIEWED_${stamp}.csv`, payloads.markedCsv, "add");
         } catch (err) {
           sidecarWarning = `${sidecarWarning} Timestamped backup sidecars incomplete: ${err.message || err}`.trim();
         }
@@ -498,8 +530,8 @@
       clearDirty();
       capturedMutation = null;
       const recordText = current ? `#${current.queue_number} ${current.filename}` : "current progress";
-      setSaveStatus(`${isAuto ? "Auto-saved" : "Saved"} and verified online: ${recordText}. Total ${records.length}, reviewed ${reviewed}, pending ${progress.pending}, excluded ${excluded}.${sidecarWarning}`);
-      setTopStatus(`Saved and verified online. Total records: ${records.length}. Reviewed: ${reviewed}. Pending: ${progress.pending}. Excluded: ${excluded}. ${sidecarWarning || "Marked spreadsheet backup updated."}`);
+      setSaveStatus(`${isAuto ? "Auto-saved" : "Saved"} and verified online: ${recordText}. Total ${records.length}, reviewed ${payloads.reviewed}, pending ${payloads.pending}, excluded ${payloads.excluded}.${sidecarWarning}`);
+      setTopStatus(`Saved and verified online. Total records: ${records.length}. Reviewed: ${payloads.reviewed}. Pending: ${payloads.pending}. Excluded: ${payloads.excluded}. ${sidecarWarning || "Marked spreadsheet backup updated."}`);
     } finally {
       if (button) button.disabled = false;
     }

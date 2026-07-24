@@ -44,7 +44,7 @@ test("main viewer loads the 7730 save guard and not the duplicate autosave shim"
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260724-7730-count-guard-2/);
   assert.match(html, /assets\/app\.js\?v=20260724-queue-count-clarity-2/);
-  assert.match(html, /assets\/save-online-merge\.js\?v=20260724-save-total-guard-2/);
+  assert.match(html, /assets\/save-online-merge\.js\?v=20260724-save-total-guard-3/);
   assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/);
   assert.match(html, /Download All Missing Tags XLSX/);
   assert.doesNotMatch(html, /autosave-online-v3\.js/);
@@ -159,13 +159,16 @@ test("save merge protects newer online decisions from stale local sessions", () 
 });
 
 test("save path writes progress, full status csv, marked csv, audit, and manual snapshots", () => {
-  assert.match(read("index.html"), /assets\/save-online-merge\.js\?v=20260724-save-total-guard-2/);
+  assert.match(read("index.html"), /assets\/save-online-merge\.js\?v=20260724-save-total-guard-3/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_PROGRESS_LATEST\.json/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_STATUS_LATEST\.csv/);
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_AUDIT_LATEST\.json/);
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_\$\{stamp\}\.csv/);
   assert.match(saveMerge, /Online verification failed/);
+  assert.match(saveMerge, /completeDecisionMap/);
+  assert.match(saveMerge, /saved decision map does not cover the full protected queue/);
+  assert.match(saveMerge, /pending records are preserved as blank decision entries/);
   assert.match(saveMerge, /generated status rows do not cover the full protected queue/);
   assert.match(saveMerge, /Total records: \$\{records\.length\}/);
   assert.match(saveMerge, /beforeunload/);

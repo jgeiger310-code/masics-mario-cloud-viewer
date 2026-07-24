@@ -35,13 +35,14 @@ function response(body, status = 200, headers = {}) {
 const manifest = {
   records: [
     { queue_number: 1, review_id: "r1", filename: "one.pdf", file_type: "pdf", dropbox_path: "/one.pdf" },
-    { queue_number: 2, review_id: "r2", filename: "two.pdf", file_type: "pdf", dropbox_path: "/two.pdf" }
+    { queue_number: 2, review_id: "r2", filename: "two.pdf", file_type: "pdf", dropbox_path: "/two.pdf" },
+    { queue_number: 3, review_id: "r3", filename: "three.pdf", file_type: "pdf", dropbox_path: "/three.pdf" }
   ]
 };
 
 let online = {
   queueIdentity: "q1",
-  total: 2,
+  total: 3,
   decisions: { r2: { decision: "responsive", notes: "kept online\n\nAI note: preserve online ai", updatedAt: "2026-07-16T00:00:00.000Z" } }
 };
 let rev = "rev-a";
@@ -51,7 +52,7 @@ const uploads = [];
 const elements = {
   "save-status": new Element("save-status"),
   "status-line": new Element("status-line"),
-  "record-position": new Element("record-position", "", "Record 1 of 2"),
+  "record-position": new Element("record-position", "", "Record 1 of 3"),
   "record-title": new Element("record-title", "", "one.pdf"),
   decision: new Element("decision", "missing"),
   notes: new Element("notes", "captured note"),
@@ -136,6 +137,9 @@ assert.equal(progressUploadAttempts, 2, "progress save should retry after Dropbo
 assert.equal(online.decisions.r1.decision, "missing", "captured current mutation must be saved");
 assert.equal(online.decisions.r1.notes, "captured note", "captured notes must survive delayed save");
 assert.equal(online.decisions.r2.notes, "updated by other browser\n\nAI note: preserve online ai", "conflict retry must preserve newer online decision and its AI note");
+assert.deepEqual(online.decisions.r3, { decision: "", notes: "", updatedAt: "" }, "untouched pending records must stay present as blank decisions");
+assert.equal(Object.keys(online.decisions).length, manifest.records.length, "saved progress decisions must cover every manifest record");
+assert.equal(online.pending, 1, "blank protected records should count as pending");
 assert.ok(online.generationId, "progress generation id should be written");
 assert.ok(online.sourceProgressHash, "progress source hash should be written");
 assert.equal(localStorage.getItem("masics_cloud_progress:q1:dirty_unsynced"), null, "dirty marker should clear after verified save");
