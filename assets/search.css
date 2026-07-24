@@ -79,6 +79,10 @@ fieldset input[type="text"], fieldset input[type="number"], fieldset select, .sa
   width: 100%; border: 1px solid #b8c3cb; border-radius: 8px; padding: 8px 9px; background: white;
 }
 .check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+.file-category-grid { grid-template-columns: 1fr; margin-bottom: 8px; }
+.filter-hint { margin: 0 0 8px; font-size: .8rem; color: var(--muted); line-height: 1.35; }
+.specific-ext-label { margin-top: 10px; font-size: .82rem; font-weight: 750; color: #34424d; }
+.badge-category { background: #e8eef8; color: #274a78; border-color: #c5d3ea; }
 .range-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .range-row label { font-size: .82rem; }
 .range-row input { display: block; margin-top: 4px; }

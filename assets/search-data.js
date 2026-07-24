@@ -10,7 +10,8 @@
   const E = {
     status: $("status-line"), badge: $("catalog-badge"), signIn: $("sign-in"), signOut: $("sign-out"),
     query: $("query"), go: $("search-button"), related: $("related-terms"), fuzzy: $("fuzzy-search"),
-    decisions: $("decision-filters"), ocr: $("has-ocr"), transcript: $("has-transcript"), type: $("file-type"),
+    decisions: $("decision-filters"), categories: $("file-category-filters"),
+    ocr: $("has-ocr"), transcript: $("has-transcript"), type: $("file-type"),
     folder: $("folder-filter"), qmin: $("queue-min"), qmax: $("queue-max"), saved: $("saved-searches"),
     save: $("save-search"), clear: $("clear-search"), count: $("result-count"), expand: $("expansion-note"),
     sort: $("sort-results"), select: $("select-page"), exportSel: $("export-selected"), exportAll: $("export-results"),
@@ -227,16 +228,92 @@
     if (!records.length) throw new Error("No searchable records were loaded from the current queue list.");
     return records;
   }
+  const INDEX_DB_NAME = "masics_search_index_cache_v2";
+  const INDEX_STORE = "indexes";
+  const INDEX_MAX_BYTES = 45 * 1024 * 1024;
+
+  function openIndexDb() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error("IndexedDB unavailable"));
+        return;
+      }
+      const request = indexedDB.open(INDEX_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(INDEX_STORE)) db.createObjectStore(INDEX_STORE);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("IndexedDB open failed"));
+    });
+  }
+
+  async function idbGet(key) {
+    try {
+      const db = await openIndexDb();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(INDEX_STORE, "readonly");
+        const req = tx.objectStore(INDEX_STORE).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async function idbSet(key, value) {
+    try {
+      const db = await openIndexDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(INDEX_STORE, "readwrite");
+        tx.objectStore(INDEX_STORE).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function fingerprintRecords(records) {
+    // Cheap stable key: count + first/last ids + sample of updated fields
+    const n = records.length;
+    if (!n) return "empty";
+    const first = records[0]?.review_id || "";
+    const last = records[n - 1]?.review_id || "";
+    let acc = 0;
+    for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 64))) {
+      const r = records[i];
+      acc = (acc + String(r.review_id || "").length * 17 + String(r.decision || "").length * 3 + String(r.mario_notes || "").length) >>> 0;
+    }
+    return `v2:${n}:${first}:${last}:${acc}:${S.mode || "meta"}`;
+  }
+
   function createWorker() {
     S.worker?.terminate();
-    S.worker = new Worker("assets/search-worker.js?v=20260721-1");
+    S.worker = new Worker("assets/search-worker.js?v=20260724-file-category-1");
+    const cacheKey = fingerprintRecords(S.records);
     S.worker.onmessage = (event) => {
       const message = event.data || {};
       if (message.type === "build-progress") loading(`Building search index for ${S.records.length.toLocaleString()} records…`, message.percent);
       else if (message.type === "build-complete") {
         S.ready = true;
         loading("", 100, false);
-        status(`${S.records.length.toLocaleString()} records ready. Search is read-only and cannot change evidence or review decisions.`);
+        const fromCache = message.fromCache ? " (cached index)" : "";
+        status(`${S.records.length.toLocaleString()} queue records ready${fromCache}. Search is read-only — it cannot change evidence or review decisions.`);
+        if (message.serialized && !message.fromCache) {
+          // Persist for next session when payload is not huge.
+          try {
+            const approx = JSON.stringify(message.serialized).length;
+            if (approx <= INDEX_MAX_BYTES) {
+              idbSet(cacheKey, { key: cacheKey, savedAt: Date.now(), payload: message.serialized }).catch(() => {});
+            }
+          } catch {
+            /* ignore cache write failures */
+          }
+        }
         A.runSearch();
       } else if (message.type === "search-results" && message.requestId === S.request) {
         S.results = message.results || [];
@@ -247,7 +324,18 @@
       } else if (message.type === "error") status(message.message || "Search failed.");
     };
     S.worker.onerror = (event) => status(`Search engine failed: ${event.message || "unknown error"}`);
-    S.worker.postMessage({ type: "build", records: S.records });
+
+    // Try hydrate from IndexedDB first for speed; fall back to full build.
+    idbGet(cacheKey).then((cached) => {
+      if (cached?.payload?.version === 2 && Array.isArray(cached.payload.docs) && cached.payload.docs.length === S.records.length) {
+        loading("Restoring cached search index…", 40);
+        S.worker.postMessage({ type: "hydrate", payload: cached.payload });
+        return;
+      }
+      S.worker.postMessage({ type: "build", records: S.records });
+    }).catch(() => {
+      S.worker.postMessage({ type: "build", records: S.records });
+    });
   }
   function encodeOauthState(plainState, verifier, returnTo) {
     // Same masics1 envelope as auth-storage-fallback so production index can recover

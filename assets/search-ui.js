@@ -9,6 +9,7 @@
   function filters() {
     return {
       decisions: [...document.querySelectorAll("input[data-filter-decision]:checked")].map((input) => input.value),
+      fileCategories: [...document.querySelectorAll("input[data-filter-category]:checked")].map((input) => input.value),
       fileTypes: E.type.value ? [E.type.value] : [],
       hasOcr: E.ocr.checked ? true : null,
       hasTranscript: E.transcript.checked ? true : null,
@@ -56,7 +57,7 @@
     item.className = "result-card";
     item.innerHTML = `<input class="result-select" type="checkbox" aria-label="Select ${escapeHtml(record.filename)}" ${checked ? "checked" : ""}>
       <div><div class="result-title-row"><h3 class="result-title"><span class="result-number">${escapeHtml(record.queue_number)}.</span>${escapeHtml(record.filename)}</h3>
-      <div class="badges"><span class="badge ${escapeHtml(decision)}">${escapeHtml(labels[decision] || decision)}</span><span class="badge">${escapeHtml(record.file_type || "file")}</span>
+      <div class="badges"><span class="badge ${escapeHtml(decision)}">${escapeHtml(labels[decision] || decision)}</span><span class="badge badge-category">${escapeHtml(core.categoryLabel ? core.categoryLabel(core.categorizeFileType(record.file_type || record.extension || "")) : (record.file_type || "file"))}</span><span class="badge">${escapeHtml(record.file_type || "file")}</span>
       ${record.has_ocr_sidecar || record.ocr_text ? '<span class="badge">OCR</span>' : ""}${record.has_transcript_sidecar || record.transcript_text ? '<span class="badge">Transcript</span>' : ""}</div></div>
       <p class="result-path">${escapeHtml(record.dropbox_path || "")}</p>${record.ai_note ? `<p class="result-description">${escapeHtml(record.ai_note)}</p>` : ""}
       <p class="result-snippet"><strong>${escapeHtml((result.matched_field || "match").replace(/_/g, " "))}:</strong> ${escapeHtml(result.snippet || "")}</p>
@@ -218,6 +219,7 @@
     if (match) match.checked = true;
     E.related.checked = search.related !== false; E.fuzzy.checked = search.fuzzy !== false;
     document.querySelectorAll("input[data-filter-decision]").forEach((input) => { input.checked = Boolean(search.filters?.decisions?.includes(input.value)); });
+    document.querySelectorAll("input[data-filter-category]").forEach((input) => { input.checked = Boolean(search.filters?.fileCategories?.includes(input.value)); });
     E.type.value = search.filters?.fileTypes?.[0] || ""; E.ocr.checked = search.filters?.hasOcr === true; E.transcript.checked = search.filters?.hasTranscript === true;
     E.folder.value = search.filters?.folder || ""; E.qmin.value = search.filters?.queueMin || ""; E.qmax.value = search.filters?.queueMax || ""; E.sort.value = search.sort || "relevance";
     runSearch();
@@ -225,14 +227,33 @@
   function clearSearch() {
     E.query.value = ""; document.querySelector('input[name="match-mode"][value="all"]').checked = true; E.related.checked = E.fuzzy.checked = true;
     document.querySelectorAll("input[data-filter-decision]").forEach((input) => { input.checked = false; });
+    document.querySelectorAll("input[data-filter-category]").forEach((input) => { input.checked = false; });
     E.ocr.checked = E.transcript.checked = false; E.type.value = E.folder.value = E.qmin.value = E.qmax.value = E.saved.value = ""; E.sort.value = "relevance";
     runSearch();
   }
   function populateFilters() {
     E.decisions.innerHTML = "";
     decisions.forEach((decision) => { const label = document.createElement("label"); label.innerHTML = `<input type="checkbox" data-filter-decision value="${decision}"> ${labels[decision]}`; E.decisions.appendChild(label); });
+    if (E.categories) {
+      E.categories.innerHTML = "";
+      const defs = core.FILE_CATEGORY_DEFS || [
+        { id: "image", label: "Images" },
+        { id: "video", label: "Video" },
+        { id: "audio", label: "Audio" },
+        { id: "document", label: "Documents" },
+        { id: "other", label: "Other" }
+      ];
+      defs.forEach((category) => {
+        const label = document.createElement("label");
+        label.innerHTML = `<input type="checkbox" data-filter-category value="${category.id}"> ${category.label}`;
+        E.categories.appendChild(label);
+      });
+      E.categories.querySelectorAll("input[data-filter-category]").forEach((input) => {
+        input.addEventListener("change", scheduleSearch);
+      });
+    }
     const types = [...new Set(S.records.map((record) => String(record.file_type || record.extension || "").replace(/^\./, "").toLowerCase()).filter(Boolean))].sort();
-    E.type.innerHTML = '<option value="">All file types</option>';
+    E.type.innerHTML = '<option value="">All extensions</option>';
     types.forEach((type) => { const option = document.createElement("option"); option.value = option.textContent = type; E.type.appendChild(option); });
   }
   Object.assign(A, { runSearch, scheduleSearch, render, selectPage, exportCsv, preview, openViewer, closePreview, refreshSaved, saveSearch, applySearch, clearSearch, populateFilters, savedSearches });

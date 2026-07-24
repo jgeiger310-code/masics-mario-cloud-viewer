@@ -34,6 +34,19 @@ assert.equal(engine.search("kennel", { related: true }).results[0].review_id, "b
 assert.equal(engine.search("license", { filters: { decisions: ["missing"] } }).total, 0);
 assert.equal(engine.search("", { filters: { hasOcr: true } }).total, 1);
 
+// File category filters (image / audio / video / document / other)
+assert.equal(core.categorizeFileType("jpg"), "image");
+assert.equal(core.categorizeFileType(".MP4"), "video");
+assert.equal(core.categorizeFileType("mp3"), "audio");
+assert.equal(core.categorizeFileType("pdf"), "document");
+assert.equal(core.categorizeFileType("amr"), "audio");
+assert.equal(core.categorizeFileType("url"), "other");
+assert.equal(engine.search("", { filters: { fileCategories: ["document"] } }).total, 1);
+assert.equal(engine.search("", { filters: { fileCategories: ["audio"] } }).results[0].review_id, "b");
+assert.equal(engine.search("", { filters: { fileCategories: ["image"] } }).total, 0);
+assert.equal(engine.search("", { filters: { fileCategories: ["document", "audio"] } }).total, 2);
+assert.equal(engine.search("", { filters: { fileCategories: ["document"], fileTypes: ["mp3"] } }).total, 0);
+
 // Regression: stopwords must not zero multi-word legal phrases
 const legal = new core.SearchEngine([
   {

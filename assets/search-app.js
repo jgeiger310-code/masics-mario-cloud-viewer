@@ -10,6 +10,7 @@
     E.query.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); A.runSearch(); } });
     document.querySelectorAll('input[name="match-mode"],#related-terms,#fuzzy-search,#has-ocr,#has-transcript').forEach((input) => input.addEventListener("change", A.runSearch));
     E.decisions.addEventListener("change", A.runSearch);
+    if (E.categories) E.categories.addEventListener("change", A.runSearch);
     E.type.addEventListener("change", A.runSearch);
     [E.folder, E.qmin, E.qmax].forEach((input) => input.addEventListener("input", A.scheduleSearch));
     E.sort.addEventListener("change", A.render);

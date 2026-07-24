@@ -36,6 +36,62 @@
     decision: 1
   });
 
+  /** Broad media/document buckets for Evidence Search filters (not legal file-type tags). */
+  const FILE_CATEGORY_DEFS = Object.freeze([
+    {
+      id: "image",
+      label: "Images",
+      extensions: Object.freeze(["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif"])
+    },
+    {
+      id: "video",
+      label: "Video",
+      extensions: Object.freeze(["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp", "mpeg", "mpg"])
+    },
+    {
+      id: "audio",
+      label: "Audio",
+      extensions: Object.freeze(["mp3", "wav", "m4a", "aac", "ogg", "amr", "flac", "wma", "opus"])
+    },
+    {
+      id: "document",
+      label: "Documents",
+      extensions: Object.freeze([
+        "pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "csv", "json", "md", "log",
+        "xml", "html", "htm", "rtf", "odt", "ods", "odp", "pages", "numbers", "key"
+      ])
+    },
+    {
+      id: "other",
+      label: "Other",
+      extensions: Object.freeze([]) // catch-all for anything not listed above
+    }
+  ]);
+
+  const EXTENSION_TO_CATEGORY = (() => {
+    const map = new Map();
+    FILE_CATEGORY_DEFS.forEach((category) => {
+      if (category.id === "other") return;
+      category.extensions.forEach((ext) => map.set(String(ext).toLowerCase(), category.id));
+    });
+    return map;
+  })();
+
+  function normalizeExtension(value) {
+    return String(value || "").replace(/^\./, "").toLowerCase().trim();
+  }
+
+  function categorizeFileType(fileTypeOrExtension) {
+    const ext = normalizeExtension(fileTypeOrExtension);
+    if (!ext) return "other";
+    return EXTENSION_TO_CATEGORY.get(ext) || "other";
+  }
+
+  function categoryLabel(categoryId) {
+    const found = FILE_CATEGORY_DEFS.find((category) => category.id === categoryId);
+    return found ? found.label : "Other";
+  }
+
   const SYNONYM_GROUPS = [
     ["foil", "public records", "public record", "freedom of information", "records request", "foil request"],
     ["certificate of occupancy", "c of o", "co certificate", "occupancy certificate", "c/o"],
@@ -203,18 +259,21 @@
   function normalizeRecord(record, index) {
     const identifiers = [record.review_id, record.mfr_request_ids, record.display?.mfr_request_ids]
       .filter(Boolean).join(" ");
+    const ocrQuality = String(record.ocr_quality || record.quality || "unknown").toLowerCase();
     const normalized = {
       index,
       review_id: String(record.review_id || record.id || `record-${index}`),
       queue_number: Number(record.queue_number || record.queue || index + 1) || index + 1,
       filename: String(record.filename || record.name || "Untitled file"),
-      file_type: String(record.file_type || record.extension || "").replace(/^\./, "").toLowerCase(),
+      file_type: normalizeExtension(record.file_type || record.extension || ""),
+      file_category: categorizeFileType(record.file_type || record.extension || ""),
       decision: String(record.decision || "").toLowerCase(),
       dropbox_path: String(record.dropbox_path || record.path || ""),
       mario_notes: String(record.mario_notes || record.mario_note || ""),
       ai_note: String(record.ai_note || record.description || ""),
       ocr_text: String(record.ocr_text || record.ocr || ""),
       transcript_text: String(record.transcript_text || record.transcript || ""),
+      ocr_quality: ocrQuality,
       identifiers,
       has_ocr_sidecar: truthy(record.has_ocr_sidecar) || Boolean(record.ocr_text || record.ocr),
       has_transcript_sidecar: truthy(record.has_transcript_sidecar) || Boolean(record.transcript_text || record.transcript),
@@ -248,6 +307,10 @@
   function recordPassesFilters(doc, filters = {}) {
     if (filters.decisions?.length && !filters.decisions.includes(doc.decision || "pending")) return false;
     if (filters.fileTypes?.length && !filters.fileTypes.includes(doc.file_type || "unknown")) return false;
+    if (filters.fileCategories?.length) {
+      const category = doc.file_category || categorizeFileType(doc.file_type);
+      if (!filters.fileCategories.includes(category)) return false;
+    }
     if (filters.hasOcr === true && !doc.has_ocr_sidecar) return false;
     if (filters.hasTranscript === true && !doc.has_transcript_sidecar) return false;
     if (filters.folder && !doc._fields.path.includes(normalizeText(filters.folder))) return false;
@@ -290,6 +353,55 @@
       });
       this.built = true;
       return this;
+    }
+
+    /**
+     * Serialize inverted index for IndexedDB cache (same ranking algorithm after hydrate).
+     * Docs are stored as normalized records so phrase/snippet search still works offline of rebuild.
+     */
+    serialize() {
+      if (!this.built) throw new Error("Search index has not been built.");
+      const indexes = {};
+      Object.entries(this.indexes).forEach(([field, termMap]) => {
+        const terms = [];
+        termMap.forEach((postings, term) => {
+          terms.push([term, [...postings.entries()]]);
+        });
+        indexes[field] = terms;
+      });
+      return {
+        version: 2,
+        built: true,
+        docs: this.docs,
+        indexes,
+        vocabulary: [...this.vocabulary]
+      };
+    }
+
+    static hydrate(payload) {
+      if (!payload || payload.version !== 2 || !Array.isArray(payload.docs)) {
+        throw new Error("Invalid search index cache payload.");
+      }
+      const engine = new SearchEngine([]);
+      engine.docs = payload.docs;
+      engine.indexes = Object.fromEntries(Object.keys(FIELD_WEIGHTS).map((field) => [field, new Map()]));
+      Object.entries(payload.indexes || {}).forEach(([field, terms]) => {
+        const termMap = engine.indexes[field] || new Map();
+        (terms || []).forEach(([term, postings]) => {
+          termMap.set(term, new Map(postings || []));
+        });
+        engine.indexes[field] = termMap;
+      });
+      engine.vocabulary = new Set(payload.vocabulary || []);
+      engine.prefixVocabulary = new Map();
+      engine.vocabulary.forEach((term) => {
+        const prefix = term.slice(0, 3);
+        if (!prefix) return;
+        if (!engine.prefixVocabulary.has(prefix)) engine.prefixVocabulary.set(prefix, []);
+        engine.prefixVocabulary.get(prefix).push(term);
+      });
+      engine.built = true;
+      return engine;
     }
 
     relatedTerms(term) {
@@ -476,13 +588,26 @@
         const normalizedQuery = normalizeText(parsed.text.replace(/\w+:/g, "").replace(/-/g, " ").replace(/"/g, ""));
         if (normalizedQuery && doc._fields.filename.includes(normalizedQuery)) score += 120;
         if (positiveCount && matchedCount === positiveCount) score += 25 * positiveCount;
+        // Demote weak OCR only when hit is OCR-heavy and quality is poor/empty (notes/filename still rank normally).
+        const q = doc.ocr_quality || "unknown";
+        if (q === "poor" || q === "empty") {
+          const ocrHit = doc._fields.ocr_text && normalizedNeedles.some((n) => n && doc._fields.ocr_text.includes(n));
+          const strongHit = ["filename", "identifiers", "mario_notes", "ai_note"].some(
+            (field) => doc._fields[field] && normalizedNeedles.some((n) => n && doc._fields[field].includes(n))
+          );
+          if (ocrHit && !strongHit) score *= 0.45;
+          else if (q === "empty" && !strongHit) score *= 0.85;
+        } else if (q === "mixed") {
+          score *= 0.92;
+        }
         const snippet = makeSnippet(doc, normalizedNeedles);
         output.push({
           review_id: doc.review_id,
           queue_number: doc.queue_number,
           score: Math.round(score * 100) / 100,
           matched_field: snippet.field,
-          snippet: snippet.text
+          snippet: snippet.text,
+          ocr_quality: doc.ocr_quality || "unknown"
         });
       });
 
@@ -535,15 +660,67 @@
     return [selected.map(csvEscape).join(","), ...rows.map((row) => selected.map((column) => csvEscape(row[column])).join(","))].join("\r\n");
   }
 
+  /** Recompute reviewed/pending/excluded from decision objects (never trust stale top-level alone). */
+  function recomputeProgressSummaries(progress, options = {}) {
+    const decisions = progress?.decisions && typeof progress.decisions === "object" ? progress.decisions : {};
+    const knownIds = options.knownReviewIds ? new Set(options.knownReviewIds.map(String)) : null;
+    let reviewed = 0;
+    let excluded = 0;
+    let pending = 0;
+    let tagged = 0;
+    let considered = 0;
+    Object.entries(decisions).forEach(([id, saved]) => {
+      if (knownIds && !knownIds.has(String(id))) return;
+      considered += 1;
+      const decision = String(saved?.decision || "").trim();
+      const notes = String(saved?.notes || "").trim();
+      if (decision || notes) tagged += 1;
+      if (decision === "delete") excluded += 1;
+      else if (decision) reviewed += 1;
+      else pending += 1;
+    });
+    const total = knownIds ? knownIds.size : Math.max(considered, Number(progress?.total) || considered);
+    // Pending for known queue: ids with no decision (including missing keys).
+    if (knownIds) {
+      reviewed = 0;
+      excluded = 0;
+      pending = 0;
+      tagged = 0;
+      knownIds.forEach((id) => {
+        const saved = decisions[id] || {};
+        const decision = String(saved.decision || "").trim();
+        const notes = String(saved.notes || "").trim();
+        if (decision || notes) tagged += 1;
+        if (decision === "delete") excluded += 1;
+        else if (decision) reviewed += 1;
+        else pending += 1;
+      });
+    }
+    return {
+      total,
+      reviewed,
+      excluded,
+      pending: Math.max(0, pending),
+      tagged,
+      decisionKeys: considered
+    };
+  }
+
   return {
     FIELD_ALIASES,
     FIELD_WEIGHTS,
+    FILE_CATEGORY_DEFS,
     SearchEngine,
+    categorizeFileType,
+    categoryLabel,
     levenshtein,
+    normalizeExtension,
     normalizeRecord,
     normalizeText,
     parseCsv,
     parseQuery,
+    recomputeProgressSummaries,
+    recordPassesFilters,
     toCsv,
     tokenize,
     truthy
