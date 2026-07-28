@@ -2,12 +2,13 @@
   "use strict";
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
-  const AMR_MODULE_URL = "https://cdn.jsdelivr.net/npm/web-amr@0.0.6/+esm";
+  const AMR_DECODER_URL = "https://cdn.jsdelivr.net/npm/@audio/amr-decode@1.0.0/+esm";
   let manifestRecords = null;
-  let activePlayer = null;
-  let activeSourceUrl = "";
+  let activeAudio = null;
+  let activeOriginalUrl = "";
+  let activePlayableUrl = "";
 
-  window.MASICS_AMR_PREVIEW_VERSION = "20260728-amr-playback-1";
+  window.MASICS_AMR_PREVIEW_VERSION = "20260728-amr-nb-wb-wav-2";
 
   function $(id) {
     return document.getElementById(id);
@@ -98,11 +99,17 @@
 
   function clearActivePlayer() {
     try {
-      if (activePlayer && typeof activePlayer.pause === "function") activePlayer.pause();
+      if (activeAudio) {
+        activeAudio.pause();
+        activeAudio.removeAttribute("src");
+        activeAudio.load();
+      }
     } catch (_) {}
-    activePlayer = null;
-    if (activeSourceUrl) URL.revokeObjectURL(activeSourceUrl);
-    activeSourceUrl = "";
+    activeAudio = null;
+    if (activeOriginalUrl) URL.revokeObjectURL(activeOriginalUrl);
+    if (activePlayableUrl) URL.revokeObjectURL(activePlayableUrl);
+    activeOriginalUrl = "";
+    activePlayableUrl = "";
   }
 
   function appendFileActions(container, url, record) {
@@ -117,70 +124,51 @@
     container.appendChild(actions);
   }
 
-  function formatTime(seconds) {
-    const safe = Math.max(0, Math.floor(Number(seconds) || 0));
-    return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
+  function writeAscii(view, offset, text) {
+    for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
   }
 
-  function createAmrControls(player, record) {
-    const shell = document.createElement("div");
-    shell.className = "preview-amr";
-    const label = document.createElement("p");
-    label.className = "preview-message";
-    label.textContent = `${record.filename} — AMR audio`;
-    const controls = document.createElement("div");
-    controls.className = "preview-file-actions";
-    const play = document.createElement("button");
-    play.type = "button";
-    play.className = "preview-open";
-    play.textContent = "Play";
-    const pause = document.createElement("button");
-    pause.type = "button";
-    pause.className = "preview-open";
-    pause.textContent = "Pause";
-    const restart = document.createElement("button");
-    restart.type = "button";
-    restart.className = "preview-open";
-    restart.textContent = "Restart";
-    const time = document.createElement("span");
-    time.className = "muted";
-    time.textContent = Number.isFinite(player.duration) ? `0:00 / ${formatTime(player.duration)}` : "Ready";
-
-    play.addEventListener("click", async () => {
-      try {
-        await player.play();
-      } catch (err) {
-        const status = $("evidence-status");
-        if (status) status.textContent = err?.message || "AMR playback could not start.";
-      }
-    });
-    pause.addEventListener("click", () => player.pause());
-    restart.addEventListener("click", async () => {
-      try {
-        if (typeof player.fastSeek === "function") await player.fastSeek(0);
-        else player.currentTime = 0;
-        await player.play();
-      } catch (err) {
-        const status = $("evidence-status");
-        if (status) status.textContent = err?.message || "AMR playback could not restart.";
-      }
-    });
-
-    if (typeof player.addEventListener === "function") {
-      const update = () => {
-        const current = Number(player.currentTime || 0);
-        const duration = Number(player.duration || 0);
-        time.textContent = duration > 0 ? `${formatTime(current)} / ${formatTime(duration)}` : formatTime(current);
-      };
-      player.addEventListener("timeupdate", update);
-      player.addEventListener("ended", update);
-      player.addEventListener("play", () => { play.textContent = "Playing"; });
-      player.addEventListener("pause", () => { play.textContent = "Play"; });
+  function pcmToWavBlob(channelData, sampleRate) {
+    if (!Array.isArray(channelData) || !channelData.length || !channelData[0]?.length) {
+      throw new Error("AMR decoder returned no audio samples.");
     }
+    const channels = channelData.length;
+    const frames = channelData[0].length;
+    const bytesPerSample = 2;
+    const dataBytes = frames * channels * bytesPerSample;
+    const buffer = new ArrayBuffer(44 + dataBytes);
+    const view = new DataView(buffer);
 
-    controls.append(play, pause, restart, time);
-    shell.append(label, controls);
-    return shell;
+    writeAscii(view, 0, "RIFF");
+    view.setUint32(4, 36 + dataBytes, true);
+    writeAscii(view, 8, "WAVE");
+    writeAscii(view, 12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, channels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * channels * bytesPerSample, true);
+    view.setUint16(32, channels * bytesPerSample, true);
+    view.setUint16(34, 16, true);
+    writeAscii(view, 36, "data");
+    view.setUint32(40, dataBytes, true);
+
+    let offset = 44;
+    for (let frame = 0; frame < frames; frame += 1) {
+      for (let channel = 0; channel < channels; channel += 1) {
+        const sample = Math.max(-1, Math.min(1, Number(channelData[channel][frame]) || 0));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        offset += 2;
+      }
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  function amrHeader(bytes) {
+    const head = new TextDecoder("ascii").decode(bytes.slice(0, 16));
+    if (head.startsWith("#!AMR-WB\n")) return "AMR-WB";
+    if (head.startsWith("#!AMR\n")) return "AMR-NB";
+    return "AMR";
   }
 
   async function renderAmr(record) {
@@ -190,18 +178,52 @@
     clearActivePlayer();
     preview.innerHTML = "";
     status.textContent = "Loading AMR audio from Dropbox...";
+
     const response = await downloadFirst(evidenceLocators(record));
-    const originalBlob = new Blob([await response.arrayBuffer()], { type: "audio/amr" });
-    activeSourceUrl = URL.createObjectURL(originalBlob);
-    status.textContent = "Loading AMR decoder...";
-    const module = await import(AMR_MODULE_URL);
-    if (typeof module.AMRPlayer !== "function") throw new Error("AMR decoder did not load correctly.");
-    const player = module.AMRPlayer(await originalBlob.arrayBuffer());
-    if (player?.error) throw new Error(player.error.message || "AMR decoder could not read this file.");
-    activePlayer = player;
-    preview.appendChild(createAmrControls(player, record));
-    appendFileActions(preview, activeSourceUrl, record);
-    status.textContent = "AMR audio decoded in the browser and is ready to play. The original evidence file was not changed.";
+    const originalBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(originalBuffer);
+    const format = amrHeader(bytes);
+    const originalBlob = new Blob([originalBuffer], { type: "audio/amr" });
+    activeOriginalUrl = URL.createObjectURL(originalBlob);
+
+    status.textContent = `Decoding ${format} audio in the browser...`;
+    const module = await import(AMR_DECODER_URL);
+    const decode = module.default;
+    if (typeof decode !== "function") throw new Error("AMR decoder module did not expose its decode function.");
+
+    const decoded = await decode(originalBuffer);
+    if (!decoded || !decoded.channelData || !decoded.sampleRate) {
+      throw new Error("AMR decoder could not read this evidence file.");
+    }
+
+    const wavBlob = pcmToWavBlob(decoded.channelData, decoded.sampleRate);
+    activePlayableUrl = URL.createObjectURL(wavBlob);
+
+    const shell = document.createElement("div");
+    shell.className = "preview-amr";
+    const label = document.createElement("p");
+    label.className = "preview-message";
+    label.textContent = `${record.filename} — ${format} converted temporarily to WAV for browser playback`;
+
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.preload = "metadata";
+    audio.src = activePlayableUrl;
+    audio.title = record.filename;
+    audio.style.width = "100%";
+    activeAudio = audio;
+
+    audio.addEventListener("error", () => {
+      const mediaError = audio.error;
+      status.textContent = mediaError
+        ? `Decoded audio could not play (browser media error ${mediaError.code}). The original AMR is still available.`
+        : "Decoded audio could not play. The original AMR is still available.";
+    }, { once: true });
+
+    shell.append(label, audio);
+    preview.appendChild(shell);
+    appendFileActions(preview, activeOriginalUrl, record);
+    status.textContent = `${format} decoded successfully at ${decoded.sampleRate} Hz and converted to WAV for playback. Original evidence was not modified.`;
   }
 
   async function interceptAmrPreview(event) {
@@ -220,7 +242,8 @@
       const status = $("evidence-status");
       const preview = $("preview");
       if (preview) preview.innerHTML = "";
-      if (status) status.textContent = err?.message || "Unable to play this AMR file.";
+      if (status) status.textContent = `AMR playback error: ${err?.message || "Unable to decode this AMR file."}`;
+      console.error("MASICS AMR preview failed", err);
     }
   }
 
@@ -232,8 +255,10 @@
     version: window.MASICS_AMR_PREVIEW_VERSION,
     recognizesAmr: isAmrRecord({ filename: "sample.amr" }),
     recognizesAwb: isAmrRecord({ filename: "sample.awb" }),
+    detectsNarrowbandHeader: amrHeader(new TextEncoder().encode("#!AMR\nabc")) === "AMR-NB",
+    detectsWidebandHeader: amrHeader(new TextEncoder().encode("#!AMR-WB\nabc")) === "AMR-WB",
     usesDropboxDownload: /files\/download/.test(dropboxDownload.toString()),
-    usesBrowserDecoder: /web-amr/.test(AMR_MODULE_URL),
+    convertsDecodedPcmToWav: /RIFF/.test(pcmToWavBlob.toString()),
     leavesOriginalAvailable: /Save original AMR/.test(appendFileActions.toString())
   });
 })();
