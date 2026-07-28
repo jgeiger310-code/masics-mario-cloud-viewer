@@ -38,6 +38,8 @@ const saveMerge = read("assets/save-online-merge.js");
 const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
 const imageThumbnail = read("assets/image-thumbnail-preview.js");
+const amrPreview = read("assets/amr-preview.js");
+const searchUi = read("assets/search-ui.js");
 const trackerReport = read("assets/tracker-report.js");
 
 test("main viewer loads the 7730 save guard and not the duplicate autosave shim", () => {
@@ -79,6 +81,21 @@ test("supported non-image records auto-preview with a size guard", () => {
   assert.match(preview, /textExts\.includes\(fileExtension\(record\)\)/);
   assert.match(preview, /jsonIsAutoPreview/);
   assert.match(preview, /csvIsAutoPreview/);
+});
+
+test("AMR playback is handled by the dedicated decoder before generic preview", () => {
+  const html = read("index.html");
+  assert.match(html, /'wasm-unsafe-eval'/);
+  assert.match(html, /assets\/amr-preview\.js\?v=20260728-amr-wasm-csp-3/);
+  assert.ok(html.indexOf("amr-preview.js") < html.indexOf("safe-preview.js"));
+  assert.match(amrPreview, /MASICS_AMR_PREVIEW_SELF_TEST/);
+  assert.match(amrPreview, /AMR_DECODER_URL/);
+  assert.match(amrPreview, /pcmToWavBlob/);
+  assert.match(amrPreview, /MASICS_ACTIVE_RECORD/);
+  assert.match(amrPreview, /usesActiveRecordWithoutManifestRedownload/);
+  assert.match(amrPreview, /Save original AMR/);
+  assert.match(searchUi, /AMR playback is handled by the Review Viewer decoder/);
+  assert.doesNotMatch(searchUi, /\["mp3", "wav", "m4a", "aac", "ogg", "amr"\]\.includes\(ext\)/);
 });
 
 test("review startup avoids export and docx preview dependency blockers", () => {

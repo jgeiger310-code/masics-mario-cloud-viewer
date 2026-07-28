@@ -16,6 +16,8 @@ const saveMerge = read("assets/save-online-merge.js");
 const aiHydrator = read("assets/ai-note-local-hydrator.js");
 const missingExport = read("assets/export-missing-xlsx.js");
 const preview = read("assets/safe-preview.js");
+const amrPreview = read("assets/amr-preview.js");
+const searchUi = read("assets/search-ui.js");
 
 assert.match(config, /expectedRecordCount:\s*7730\b/, "Protected queue minimum must remain 7,730");
 const configuredMinimum = Number(config.match(/expectedRecordCount:\s*(\d+)/)?.[1] || 0);
@@ -33,6 +35,9 @@ assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("assets/ap
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
 assert.match(index, /assets\/app\.js\?v=20260724-queue-count-clarity-2/, "App queue count clarity cache bust is missing");
+assert.match(index, /'wasm-unsafe-eval'/, "AMR WebAssembly decoder CSP permission is missing");
+assert.match(index, /assets\/amr-preview\.js\?v=20260728-amr-wasm-csp-3/, "AMR playback handler cache bust is missing");
+assert.ok(index.indexOf("amr-preview.js") < index.indexOf("safe-preview.js"), "AMR handler must run before generic safe preview");
 assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260724-save-total-guard-3/, "Verified online save guard is missing");
@@ -130,6 +135,16 @@ assert.match(aiHydrator, /localDecision === "delete"/, "AI-note hydrator must pr
 assert.match(aiHydrator, /MASICS_QUEUE_RECORDS/, "AI-note hydrator must limit hydration to the loaded queue when available");
 assert.match(aiHydrator, /notes\.value/, "AI-note hydrator must refresh the visible notes field");
 assert.match(aiHydrator, /masics:record-change/, "AI-note hydrator must recover after async record selection");
+
+assert.match(amrPreview, /MASICS_AMR_PREVIEW_VERSION/, "AMR preview version flag is missing");
+assert.match(amrPreview, /@audio\/amr-decode@1\.0\.0/, "AMR decoder dependency must stay pinned");
+assert.match(amrPreview, /files\/download/, "AMR preview must load only the selected protected record");
+assert.match(amrPreview, /pcmToWavBlob/, "AMR preview must convert decoded PCM to browser-playable WAV");
+assert.match(amrPreview, /MASICS_ACTIVE_RECORD/, "AMR preview must use the active record instead of redownloading the full manifest");
+assert.match(amrPreview, /usesActiveRecordWithoutManifestRedownload/, "AMR active-record regression self-test is missing");
+assert.match(amrPreview, /Save original AMR/, "AMR preview must leave the original evidence available");
+assert.doesNotMatch(searchUi, /\["mp3", "wav", "m4a", "aac", "ogg", "amr"\]\.includes\(ext\)/, "Search Files must not route AMR into native browser audio");
+assert.match(searchUi, /AMR playback is handled by the Review Viewer decoder/, "Search Files must route AMR users to the Review Viewer decoder");
 
 assert.match(missingExport, /String\(decision \|\| ""\)\.trim\(\)\.toLowerCase\(\) === "missing"/, "Missing export must remain decision-specific");
 assert.match(missingExport, /window\.XLSX\.writeFile/, "Missing XLSX writer is missing");

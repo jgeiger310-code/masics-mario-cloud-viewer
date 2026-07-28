@@ -174,8 +174,11 @@
     if (E.dialog.showModal) E.dialog.showModal(); else E.dialog.setAttribute("open", "");
     const ext = String(record.file_type || "").toLowerCase();
     try {
-      if (["mp3", "wav", "m4a", "aac", "ogg", "amr", "mp4", "mov", "m4v", "webm"].includes(ext)) {
-        const element = document.createElement(["mp3", "wav", "m4a", "aac", "ogg", "amr"].includes(ext) ? "audio" : "video");
+      if (["amr", "awb"].includes(ext)) {
+        E.previewBody.innerHTML = "<p>AMR recordings do not play reliably in the browser's native audio control. Open this result in the Review Viewer, then press Preview Evidence to use the AMR decoder.</p>";
+        E.previewStatus.textContent = "AMR playback is handled by the Review Viewer decoder, not Search Files native preview.";
+      } else if (["mp3", "wav", "m4a", "aac", "ogg", "mp4", "mov", "m4v", "webm"].includes(ext)) {
+        const element = document.createElement(["mp3", "wav", "m4a", "aac", "ogg"].includes(ext) ? "audio" : "video");
         element.controls = true; element.preload = "metadata"; element.src = await firstWorking(record, tempLink); E.previewBody.appendChild(element);
         E.previewStatus.textContent = "Streaming the original evidence from Dropbox.";
       } else if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "pdf", "txt", "csv", "json", "md", "log"].includes(ext)) {

@@ -87,6 +87,8 @@
   }
 
   function activeRecordFrom(records) {
+    const active = window.MASICS_ACTIVE_RECORD;
+    if (active && typeof active === "object" && isAmrRecord(active)) return active;
     const position = ($("record-position")?.textContent || "").match(/Record\s+(\d+)\s+of/i);
     if (position) {
       const queueNumber = Number(position[1]);
@@ -230,11 +232,12 @@
     const button = event.target && event.target.closest && event.target.closest("#load-evidence");
     if (!button || !token()) return;
     const activeTitle = ($("record-title")?.textContent || "").trim().toLowerCase();
-    if (!/\.(amr|awb)$/.test(activeTitle)) return;
+    const active = window.MASICS_ACTIVE_RECORD;
+    if (!isAmrRecord(active) && !/\.(amr|awb)$/.test(activeTitle)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     try {
-      const records = await loadManifest();
+      const records = active && isAmrRecord(active) ? [] : await loadManifest();
       const record = activeRecordFrom(records);
       if (!record || !isAmrRecord(record)) throw new Error("The selected AMR record could not be matched to the Dropbox queue.");
       await renderAmr(record);
@@ -259,6 +262,7 @@
     detectsWidebandHeader: amrHeader(new TextEncoder().encode("#!AMR-WB\nabc")) === "AMR-WB",
     usesDropboxDownload: /files\/download/.test(dropboxDownload.toString()),
     convertsDecodedPcmToWav: /RIFF/.test(pcmToWavBlob.toString()),
-    leavesOriginalAvailable: /Save original AMR/.test(appendFileActions.toString())
+    leavesOriginalAvailable: /Save original AMR/.test(appendFileActions.toString()),
+    usesActiveRecordWithoutManifestRedownload: /MASICS_ACTIVE_RECORD/.test(activeRecordFrom.toString() + interceptAmrPreview.toString())
   });
 })();
