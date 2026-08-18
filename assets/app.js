@@ -111,7 +111,7 @@
   async function loadBatesIndex() {
     if (batesIndex) return batesIndex;
     try {
-      const response = await fetch("assets/bates-index.json?v=20260818-bates-label-3");
+      const response = await fetch("assets/bates-index.json?v=20260818-bates-all-1");
       batesIndex = response.ok ? await response.json() : {};
     } catch {
       batesIndex = {};
@@ -121,17 +121,22 @@
 
   function recordBates(record) {
     const display = record && record.display ? record.display : {};
-    const range = String(display.bates_range || "").trim();
-    if (range) return range;
-    const begin = String(display.bates_begin || "").trim();
-    const end = String(display.bates_end || "").trim();
-    if (begin && end && begin !== end) return `${begin}–${end}`;
-    if (begin) return begin;
+    const labeled = String(display.viewer_bates || "").trim();
+    if (labeled) return labeled;
     const fromIndex = batesIndex && record && record.review_id ? String(batesIndex[record.review_id] || "").trim() : "";
     if (fromIndex) return fromIndex;
+    const assigned = String(display.control_bates || "").trim();
+    const range = String(display.bates_range || "").trim();
+    const begin = String(display.bates_begin || "").trim();
+    const end = String(display.bates_end || "").trim();
+    const prod = range || (begin && end && begin !== end ? `${begin}–${end}` : begin);
     const blob = `${record && record.filename || ""} ${record && record.relative_path || ""} ${record && record.dropbox_path || ""}`;
     const match = blob.toUpperCase().match(/\b((?:DEF|PLF)\d{5,})\b/);
-    return match ? match[1] : "";
+    const stamped = prod || (match ? match[1] : "");
+    const qn = Number(record && record.queue_number);
+    const control = assigned || (Number.isFinite(qn) && qn > 0 ? `MASICS-${String(qn).padStart(5, "0")}` : "");
+    if (control && stamped && stamped !== control) return `${control} · ${stamped}`;
+    return control || stamped || "";
   }
 
   function cssEscape(value) {
@@ -678,10 +683,9 @@
     records = loaded.records;
     await loadBatesIndex();
     records.forEach((record) => {
-      const bates = recordBates(record);
-      if (!bates) return;
       record.display = record.display || {};
-      if (!record.display.bates_range) record.display.bates_range = bates;
+      const bates = recordBates(record);
+      if (bates) record.display.viewer_bates = bates;
     });
     window.MASICS_QUEUE_RECORDS = records;
     const onlineSync = await syncOnlineProgressIntoBrowser();
