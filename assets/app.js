@@ -106,6 +106,19 @@
     return String(value || "");
   }
 
+  let batesIndex = null;
+
+  async function loadBatesIndex() {
+    if (batesIndex) return batesIndex;
+    try {
+      const response = await fetch("assets/bates-index.json?v=20260818-bates-label-3");
+      batesIndex = response.ok ? await response.json() : {};
+    } catch {
+      batesIndex = {};
+    }
+    return batesIndex;
+  }
+
   function recordBates(record) {
     const display = record && record.display ? record.display : {};
     const range = String(display.bates_range || "").trim();
@@ -114,8 +127,10 @@
     const end = String(display.bates_end || "").trim();
     if (begin && end && begin !== end) return `${begin}–${end}`;
     if (begin) return begin;
+    const fromIndex = batesIndex && record && record.review_id ? String(batesIndex[record.review_id] || "").trim() : "";
+    if (fromIndex) return fromIndex;
     const blob = `${record && record.filename || ""} ${record && record.relative_path || ""} ${record && record.dropbox_path || ""}`;
-    const match = blob.toUpperCase().match(/\b((?:DEF|PLF)\d{6,})\b/);
+    const match = blob.toUpperCase().match(/\b((?:DEF|PLF)\d{5,})\b/);
     return match ? match[1] : "";
   }
 
@@ -661,6 +676,13 @@
     validateManifest(loaded);
     manifest = loaded;
     records = loaded.records;
+    await loadBatesIndex();
+    records.forEach((record) => {
+      const bates = recordBates(record);
+      if (!bates) return;
+      record.display = record.display || {};
+      if (!record.display.bates_range) record.display.bates_range = bates;
+    });
     window.MASICS_QUEUE_RECORDS = records;
     const onlineSync = await syncOnlineProgressIntoBrowser();
     // Always recompute from decision objects for the active queue — never trust stale footer/summary alone.
