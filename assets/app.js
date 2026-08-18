@@ -106,6 +106,19 @@
     return String(value || "");
   }
 
+  function recordBates(record) {
+    const display = record && record.display ? record.display : {};
+    const range = String(display.bates_range || "").trim();
+    if (range) return range;
+    const begin = String(display.bates_begin || "").trim();
+    const end = String(display.bates_end || "").trim();
+    if (begin && end && begin !== end) return `${begin}–${end}`;
+    if (begin) return begin;
+    const blob = `${record && record.filename || ""} ${record && record.relative_path || ""} ${record && record.dropbox_path || ""}`;
+    const match = blob.toUpperCase().match(/\b((?:DEF|PLF)\d{6,})\b/);
+    return match ? match[1] : "";
+  }
+
   function cssEscape(value) {
     if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(String(value));
     return String(value).replace(/["\\]/g, "\\$&");
@@ -713,7 +726,7 @@
       if (els.filter.value === "reviewed" && !reviewed) return false;
       if (els.filter.value === "duplicate" && saved.decision !== "duplicate") return false;
       if (!q) return true;
-      return [record.filename, record.review_id, record.display?.mfr_request_ids, saved.decision, saved.notes].some((v) => String(v || "").toLowerCase().includes(q));
+      return [record.filename, record.review_id, record.display?.mfr_request_ids, record.display?.bates_range, record.display?.bates_begin, record.display?.bates_end, recordBates(record), saved.decision, saved.notes].some((v) => String(v || "").toLowerCase().includes(q));
     });
   }
 
@@ -751,7 +764,8 @@
       number.textContent = `${record.queue_number}.`;
       const name = document.createElement("span");
       name.className = "queue-name";
-      name.textContent = record.filename;
+      const bates = recordBates(record);
+      name.textContent = bates && bates !== String(record.filename || "").replace(/\.[^.]+$/, "") ? `${record.filename}  ·  Bates ${bates}` : record.filename;
       const state = document.createElement("span");
       state.className = "queue-state";
       state.textContent = reviewed ? "Done" : notesOnly ? "Needs dropdown" : "Open";
@@ -774,9 +788,11 @@
     els.empty.hidden = true;
     els.view.hidden = false;
     els.pos.textContent = `Record ${record.queue_number} of ${records.length}`;
-    els.title.textContent = record.filename;
+    const bates = recordBates(record);
+    els.title.textContent = bates ? `${record.filename}  ·  Bates ${bates}` : record.filename;
     els.meta.innerHTML = "";
     const fields = [
+      ["Bates", bates],
       ["Review ID", record.review_id],
       ["File Type", record.file_type],
       ["MFR IDs", record.display?.mfr_request_ids || ""],
