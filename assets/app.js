@@ -764,8 +764,17 @@
       number.textContent = `${record.queue_number}.`;
       const name = document.createElement("span");
       name.className = "queue-name";
+      const fileName = document.createElement("span");
+      fileName.className = "queue-file";
+      fileName.textContent = record.filename;
+      name.appendChild(fileName);
       const bates = recordBates(record);
-      name.textContent = bates && bates !== String(record.filename || "").replace(/\.[^.]+$/, "") ? `${record.filename}  ·  Bates ${bates}` : record.filename;
+      if (bates) {
+        const batesEl = document.createElement("span");
+        batesEl.className = "queue-bates";
+        batesEl.textContent = `Bates ${bates}`;
+        name.appendChild(batesEl);
+      }
       const state = document.createElement("span");
       state.className = "queue-state";
       state.textContent = reviewed ? "Done" : notesOnly ? "Needs dropdown" : "Open";
@@ -789,7 +798,18 @@
     els.view.hidden = false;
     els.pos.textContent = `Record ${record.queue_number} of ${records.length}`;
     const bates = recordBates(record);
-    els.title.textContent = bates ? `${record.filename}  ·  Bates ${bates}` : record.filename;
+    els.title.textContent = record.filename;
+    let banner = document.getElementById("record-bates");
+    if (!banner && els.title && els.title.parentElement) {
+      banner = document.createElement("p");
+      banner.id = "record-bates";
+      banner.className = "record-bates";
+      els.title.insertAdjacentElement("afterend", banner);
+    }
+    if (banner) {
+      banner.textContent = bates ? `Bates ${bates}` : "";
+      banner.hidden = !bates;
+    }
     els.meta.innerHTML = "";
     const fields = [
       ["Bates", bates],

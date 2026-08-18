@@ -28,7 +28,10 @@ p { margin: 0; }
 .queue-list button.active { background: #eaf2ff; font-weight: 700; }
 .queue-list button.reviewed { color: #586270; }
 .queue-number { color: #586270; font-variant-numeric: tabular-nums; }
-.queue-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-name { min-width: 0; display: grid; gap: 2px; }
+.queue-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-bates { display: block; color: #0b3d2e; background: #e6f5ee; border-radius: 4px; padding: 1px 6px; font-size: 12px; font-weight: 800; white-space: normal; overflow-wrap: anywhere; width: fit-content; max-width: 100%; }
+.record-bates { margin: 4px 0 0; color: #0b3d2e; background: #e6f5ee; border: 1px solid #9ad0b6; border-radius: 6px; padding: 4px 8px; font-size: 14px; font-weight: 800; width: fit-content; max-width: 100%; overflow-wrap: anywhere; }
 .queue-state { justify-self: end; color: #1f6f45; font-size: 12px; font-weight: 700; }
 .queue-list button.pending .queue-state { color: #8a5a00; }
 .queue-list button.needs-dropdown .queue-state { color: #b42318; }
