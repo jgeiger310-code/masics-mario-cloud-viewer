@@ -45,8 +45,8 @@ const trackerReport = read("assets/tracker-report.js");
 test("main viewer loads the 7730 save guard and not the duplicate autosave shim", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260724-7730-count-guard-2/);
-  assert.match(html, /assets\/app\.js\?v=20260821-legal-export-progress-1/);
-  assert.match(html, /assets\/save-online-merge\.js\?v=20260724-save-total-guard-3/);
+  assert.match(html, /assets\/app\.js\?v=20260821-perf-1/);
+  assert.match(html, /assets\/save-online-merge\.js\?v=20260821-save-total-guard-4/);
   assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260821-legal-missing-export-1/);
   assert.match(html, /assets\/tracker\.js\?v=20260821-legal-tagged-export-1/);
   assert.match(html, /Download All Missing Tags XLSX/);
@@ -103,7 +103,7 @@ test("review startup avoids export and docx preview dependency blockers", () => 
   const html = read("index.html");
   assert.doesNotMatch(html, /assets\/vendor\/xlsx\.full\.min\.js\?v=0\.18\.5/);
   assert.doesNotMatch(html, /assets\/vendor\/mammoth\.browser\.min\.js\?v=1\.12\.0/);
-  assert.match(html, /assets\/queue-performance\.css\?v=20260718-1/);
+  assert.match(html, /assets\/queue-performance\.css\?v=20260821-virtual-1/);
   assert.match(missingExport, /ensureXlsxLoaded/);
   assert.match(missingExport, /xlsx\.full\.min\.js\?v=0\.18\.5/);
   assert.match(preview, /ensureMammothLoaded/);
@@ -177,7 +177,7 @@ test("save merge protects newer online decisions from stale local sessions", () 
 });
 
 test("save path writes progress, full status csv, marked csv, audit, and manual snapshots", () => {
-  assert.match(read("index.html"), /assets\/save-online-merge\.js\?v=20260724-save-total-guard-3/);
+  assert.match(read("index.html"), /assets\/save-online-merge\.js\?v=20260821-save-total-guard-4/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_PROGRESS_LATEST\.json/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_STATUS_LATEST\.csv/);
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/);
@@ -268,6 +268,30 @@ test("missing xlsx export includes every file tagged missing and only missing", 
   assert.equal(context.rows[0]["Short Description"], "Legal description");
   assert.equal(context.rows[0]["Mario's note / missing information"], "BATES: DEF000001-DEF000002 | Mario note");
   assert.equal(context.rows[1]["Category"], "Town Board minutes");
+});
+
+test("viewer uses native missing/needs-review filters and a progress cache", () => {
+  const html = read("index.html");
+  const fn = extractFunction(app, "filteredRecords");
+  assert.match(html, /value="needs_review"/);
+  assert.match(app, /MASICS_NATIVE_QUEUE_FILTERS/);
+  assert.match(app, /FILTER_SELECT_DELAY_MS\s*=\s*1600/);
+  assert.match(app, /progressCache/);
+  assert.match(fn, /filterValue === "missing"/);
+  assert.match(fn, /filterValue === "needs_review"/);
+  assert.match(app, /paintQueueWindow/);
+  assert.match(app, /QUEUE_SEARCH_DEBOUNCE_MS\s*=\s*150/);
+});
+
+test("save reuses loaded queue and does not duplicate tagged rows into progress JSON", () => {
+  assert.match(saveMerge, /MASICS_QUEUE_RECORDS/);
+  assert.match(saveMerge, /cachedManifestRecords/);
+  assert.doesNotMatch(saveMerge, /JSON\.stringify\(progress,\s*null,\s*2\)/);
+  assert.doesNotMatch(saveMerge, /tagged: rows\.filter/);
+  assert.doesNotMatch(saveMerge, /excludedRows: rows\.filter/);
+  assert.match(saveMerge, /completeDecisionMap/);
+  assert.match(saveMerge, /MASICS_MARIO_REVIEW_STATUS_LATEST\.csv/);
+  assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/);
 });
 
 test("tracker sees marked reviewed csv backups", () => {

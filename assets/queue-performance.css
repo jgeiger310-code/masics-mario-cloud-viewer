@@ -6,3 +6,13 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 52px;
 }
+
+.queue-list > li.queue-spacer {
+  content-visibility: visible;
+  contain-intrinsic-size: auto 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  pointer-events: none;
+  list-style: none;
+}

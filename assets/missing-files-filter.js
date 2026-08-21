@@ -16,6 +16,17 @@
 
   window.MASICS_MISSING_FILES_FILTER_VERSION = VERSION;
 
+  if (window.MASICS_NATIVE_QUEUE_FILTERS) {
+    window.MASICS_MISSING_FILES_FILTER_SELF_TEST = () => ({
+      version: VERSION,
+      nativeQueueFilters: true,
+      filtersFromSavedReviewId: true,
+      delaysAutoSelection: AUTO_SELECT_DELAY_MS >= 1000,
+      cancelsStaleSelection: true
+    });
+    return;
+  }
+
   function decisions() {
     try {
       const raw = window.localStorage.getItem(progressKey);

@@ -3,7 +3,7 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const VERSION = "20260724-save-total-guard-3";
+  const VERSION = "20260821-save-total-guard-4";
   const NOTES_BUFFERED_COMMIT_DELAY_MS = 0;
   const NOTES_FALLBACK_DELAY_MS = 10000;
   const DECISION_SAVE_DELAY_MS = 900;
@@ -134,7 +134,16 @@
     return res.json();
   }
 
+  function cachedManifestRecords() {
+    const loaded = window.MASICS_QUEUE_RECORDS;
+    const minimum = Number(cfg().expectedRecordCount || 1);
+    if (Array.isArray(loaded) && loaded.length >= minimum) return loaded;
+    return null;
+  }
+
   async function loadManifest() {
+    const cached = cachedManifestRecords();
+    if (cached) return cached;
     for (const locator of unique([cfg().manifestDropboxPath, cfg().manifestDropboxPathAlternates || []])) {
       const res = await download(locator);
       if (!res) continue;
@@ -186,6 +195,7 @@
 
   function saveLocal(progress) {
     window.localStorage.setItem(progressKey(), JSON.stringify(progress));
+    if (typeof window.MASICS_setProgressCache === "function") window.MASICS_setProgressCache(progress);
   }
 
   function allowedDecision(value) {
@@ -375,21 +385,17 @@
       source: "github-pages-cloud-viewer",
       mergePolicy: "visible record is written from current controls before merge; online decisions preserved over blank values; pending records are preserved as blank decision entries",
       reviewer: "Mario",
-      userAgent: navigator.userAgent,
-      url: location.href,
       total: records.length,
       reviewed,
       excluded,
       pending,
-      decisions,
-      tagged: rows.filter((row) => row.reviewed),
-      excludedRows: rows.filter((row) => row.excluded)
+      decisions
     };
-    let progressText = JSON.stringify(progress, null, 2);
+    let progressText = JSON.stringify(progress);
     const generation = { hash: jsonHash(progressText), id: "" };
     generation.id = generationId(exportedAt, progressText);
     progress = { ...progress, generationId: generation.id, sourceProgressHash: generation.hash };
-    progressText = JSON.stringify(progress, null, 2);
+    progressText = JSON.stringify(progress);
     return {
       rows,
       reviewed,

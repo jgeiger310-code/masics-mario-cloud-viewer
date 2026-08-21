@@ -286,14 +286,14 @@
     let acc = 0;
     for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 64))) {
       const r = records[i];
-      acc = (acc + String(r.review_id || "").length * 17 + String(r.decision || "").length * 3 + String(r.mario_notes || "").length) >>> 0;
+      acc = (acc + String(r.review_id || "").length * 17 + String(r.decision || "").length * 3 + String(r.mario_notes || "").length + String(r.ocr_text || "").length + String(r.transcript_text || "").length) >>> 0;
     }
-    return `v2:${n}:${first}:${last}:${acc}:${S.mode || "meta"}`;
+    return `v3:${n}:${first}:${last}:${acc}:${S.mode || "meta"}`;
   }
 
   function createWorker() {
     S.worker?.terminate();
-    S.worker = new Worker("assets/search-worker.js?v=20260724-file-category-1");
+    S.worker = new Worker("assets/search-worker.js?v=20260821-search-perf-1");
     const cacheKey = fingerprintRecords(S.records);
     S.worker.onmessage = (event) => {
       const message = event.data || {};

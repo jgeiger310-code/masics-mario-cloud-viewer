@@ -8,11 +8,22 @@
   const cfg = window.MASICS_DROPBOX_CONFIG;
   const authStore = window.sessionStorage;
   const progressPrefix = "masics_cloud_progress:";
+  const QUEUE_ROW_HEIGHT = 52;
+  const QUEUE_OVERSCAN = 14;
+  const FILTER_SELECT_DELAY_MS = 1600;
+  const QUEUE_SEARCH_DEBOUNCE_MS = 150;
+  window.MASICS_NATIVE_QUEUE_FILTERS = true;
   let token = authStore.getItem("masics_access_token") || "";
   let manifest = null;
   let records = [];
+  let recordById = new Map();
   let active = null;
   let activeObjectUrl = "";
+  let progressCache = null;
+  let visibleQueueRecords = [];
+  let queueRenderFrame = 0;
+  let filterSelectGeneration = 0;
+  let searchDebounceTimer = 0;
   const previewTypes = {
     ".pdf": "application/pdf",
     ".jpg": "image/jpeg",
@@ -198,18 +209,40 @@
     els.lastExport.textContent = value ? `Most recent export: ${new Date(value).toLocaleString()}` : "No progress export recorded yet.";
   }
 
+  function emptyProgress() {
+    return { queueIdentity: cfg.queueIdentity, decisions: {} };
+  }
+
   function loadProgress() {
+    if (progressCache && typeof progressCache === "object" && progressCache.decisions && typeof progressCache.decisions === "object") {
+      return progressCache;
+    }
     try {
       const raw = window.localStorage.getItem(progressKey());
-      return raw ? JSON.parse(raw) : { queueIdentity: cfg.queueIdentity, decisions: {} };
+      progressCache = raw ? JSON.parse(raw) : emptyProgress();
+      if (!progressCache || typeof progressCache !== "object" || typeof progressCache.decisions !== "object") {
+        progressCache = emptyProgress();
+      }
     } catch {
-      return { queueIdentity: cfg.queueIdentity, decisions: {} };
+      progressCache = emptyProgress();
     }
+    return progressCache;
   }
 
   function saveProgress(progress) {
-    window.localStorage.setItem(progressKey(), JSON.stringify(progress));
+    progressCache = progress && typeof progress === "object" ? progress : emptyProgress();
+    if (!progressCache.decisions || typeof progressCache.decisions !== "object") progressCache.decisions = {};
+    window.localStorage.setItem(progressKey(), JSON.stringify(progressCache));
   }
+
+  function invalidateProgressCache() {
+    progressCache = null;
+  }
+
+  window.MASICS_invalidateProgressCache = invalidateProgressCache;
+  window.MASICS_setProgressCache = (progress) => {
+    if (progress && typeof progress === "object") progressCache = progress;
+  };
 
   function updatedAt(value) {
     const time = Date.parse(value || "");
@@ -268,10 +301,9 @@
   }
 
   function filterKnownDecisions(decisions) {
-    const knownIds = new Set(records.map((record) => record.review_id));
     const filtered = {};
     Object.entries(decisions || {}).forEach(([reviewId, value]) => {
-      if (knownIds.has(reviewId) && value && typeof value === "object" && hasReviewValue(value)) filtered[reviewId] = normalizeDecision(value);
+      if (recordById.has(reviewId) && value && typeof value === "object" && hasReviewValue(value)) filtered[reviewId] = normalizeDecision(value);
     });
     return filtered;
   }
@@ -346,7 +378,7 @@
       reviewed,
       pending: Math.max(0, total - reviewed),
       excluded,
-      visible: filteredRecords().length
+      visible: filteredRecords(progress).length
     };
   }
 
@@ -365,7 +397,10 @@
     const index = activeIndex();
     const hasRecords = records.length > 0 && index >= 0;
     const progress = loadProgress();
-    const pendingCount = records.filter((record) => !isExcluded(record, progress) && !isReviewed(record, progress)).length;
+    let pendingCount = 0;
+    for (let i = 0; i < records.length; i += 1) {
+      if (!isExcluded(records[i], progress) && !isReviewed(records[i], progress)) pendingCount += 1;
+    }
     if (els.previousRecord) els.previousRecord.disabled = !hasRecords || index <= 0;
     if (els.nextRecord) els.nextRecord.disabled = !hasRecords || index >= records.length - 1;
     if (els.nextPending) els.nextPending.disabled = pendingCount === 0;
@@ -375,6 +410,15 @@
 
   function scrollActiveIntoView() {
     if (!active || !els.list) return;
+    const idx = visibleQueueRecords.findIndex((record) => record.review_id === active.review_id);
+    if (idx >= 0) {
+      const rowTop = idx * QUEUE_ROW_HEIGHT;
+      const view = els.list.clientHeight || 0;
+      if (view && (rowTop < els.list.scrollTop || rowTop + QUEUE_ROW_HEIGHT > els.list.scrollTop + view)) {
+        els.list.scrollTop = Math.max(0, rowTop - Math.floor(view / 3));
+        paintQueueWindow();
+      }
+    }
     const button = els.list.querySelector(`button[data-review-id="${cssEscape(active.review_id)}"]`);
     if (button) button.scrollIntoView({ block: "nearest" });
   }
@@ -387,7 +431,7 @@
     const notesOnly = needsDropdown(record, progress);
     button.className = `${active && active.review_id === record.review_id ? "active " : ""}${reviewed ? "reviewed" : notesOnly ? "needs-dropdown" : "pending"}`.trim();
     const state = button.querySelector(".queue-state");
-    if (state) state.textContent = reviewed ? "Done" : notesOnly ? "Needs dropdown" : "Open";
+    if (state) state.textContent = queueStateLabel(record, progress || loadProgress());
   }
 
   function refreshListState(previousReviewId = "") {
@@ -681,6 +725,7 @@
     validateManifest(loaded);
     manifest = loaded;
     records = loaded.records;
+    recordById = new Map(records.map((record) => [record.review_id, record]));
     await loadBatesIndex();
     records.forEach((record) => {
       record.display = record.display || {};
@@ -691,13 +736,12 @@
     const onlineSync = await syncOnlineProgressIntoBrowser();
     // Always recompute from decision objects for the active queue — never trust stale footer/summary alone.
     const progress = loadProgress();
-    const knownIds = records.map((r) => r.review_id);
     let reviewed = 0;
     let excluded = 0;
     let pending = 0;
     // Match save-path semantics: decision "delete" = excluded; any other non-empty decision = reviewed.
-    knownIds.forEach((id) => {
-      const saved = (progress.decisions || {})[id] || {};
+    records.forEach((record) => {
+      const saved = (progress.decisions || {})[record.review_id] || {};
       const decision = String(saved.decision || "").trim();
       if (decision === "delete") excluded += 1;
       else if (decision) reviewed += 1;
@@ -739,77 +783,141 @@
     });
   }
 
-  function filteredRecords() {
+  function filteredRecords(progress = loadProgress()) {
     const q = els.search.value.trim().toLowerCase();
-    const progress = loadProgress();
+    const filterValue = els.filter.value;
     return records.filter((record) => {
       const saved = progress.decisions[record.review_id] || {};
       if (saved.decision === "delete") return false;
       const reviewed = Boolean(saved.decision);
       const notesOnly = Boolean(!saved.decision && String(saved.notes || "").trim());
-      if (els.filter.value === "pending" && reviewed) return false;
-      if (els.filter.value === "needs_dropdown" && !notesOnly) return false;
-      if (els.filter.value === "reviewed" && !reviewed) return false;
-      if (els.filter.value === "duplicate" && saved.decision !== "duplicate") return false;
+      if (filterValue === "pending" && reviewed) return false;
+      if (filterValue === "needs_dropdown" && !notesOnly) return false;
+      if (filterValue === "reviewed" && !reviewed) return false;
+      if (filterValue === "duplicate" && saved.decision !== "duplicate") return false;
+      if (filterValue === "missing" && saved.decision !== "missing") return false;
+      if (filterValue === "needs_review" && saved.decision !== "needs_review") return false;
       if (!q) return true;
       return [record.filename, record.review_id, record.display?.mfr_request_ids, record.display?.bates_range, record.display?.bates_begin, record.display?.bates_end, recordBates(record), saved.decision, saved.notes].some((v) => String(v || "").toLowerCase().includes(q));
     });
   }
 
   function selectVisibleRecordAfterFilter() {
-    const visibleRecords = filteredRecords();
+    const progress = loadProgress();
+    const visibleRecords = filteredRecords(progress);
     renderList();
     if (!visibleRecords.length) {
       els.empty.hidden = false;
-      els.empty.textContent = "No records match the current filter.";
+      const emptyMessage = els.filter.value === "needs_review"
+        ? "No records are marked Needs further review."
+        : "No records match the current filter.";
+      els.empty.textContent = emptyMessage;
       els.view.hidden = true;
       return;
     }
-    if (!active || !visibleRecords.some((record) => record.review_id === active.review_id)) {
-      showRecord(visibleRecords[0]);
-    } else {
+    const activeVisible = Boolean(active && visibleRecords.some((record) => record.review_id === active.review_id));
+    if (activeVisible) {
       refreshListState();
       updateReviewNavigation();
+      return;
     }
+    // Missing / Needs review used to auto-click the first row in the same event as a
+    // dropdown change, which saved the new tag against the next record. Keep that delay.
+    const delay = (els.filter.value === "missing" || els.filter.value === "needs_review") ? FILTER_SELECT_DELAY_MS : 0;
+    const pick = visibleRecords[0];
+    filterSelectGeneration += 1;
+    const generation = filterSelectGeneration;
+    window.setTimeout(() => {
+      if (generation !== filterSelectGeneration) return;
+      if (!pick || !recordById.has(pick.review_id)) return;
+      showRecord(pick);
+    }, delay);
+  }
+
+  function queueStateLabel(record, progress) {
+    const saved = progress.decisions[record.review_id] || {};
+    if (els.filter.value === "missing" && saved.decision === "missing") return "Missing";
+    if (els.filter.value === "needs_review" && saved.decision === "needs_review") return "Needs review";
+    if (isReviewed(record, progress)) return "Done";
+    if (needsDropdown(record, progress)) return "Needs dropdown";
+    return "Open";
+  }
+
+  function buildQueueItem(record, progress) {
+    const reviewed = isReviewed(record, progress);
+    const notesOnly = needsDropdown(record, progress);
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `${active && active.review_id === record.review_id ? "active " : ""}${reviewed ? "reviewed" : notesOnly ? "needs-dropdown" : "pending"}`.trim();
+    button.dataset.reviewId = record.review_id;
+    const number = document.createElement("span");
+    number.className = "queue-number";
+    number.textContent = `${record.queue_number}.`;
+    const name = document.createElement("span");
+    name.className = "queue-name";
+    const fileName = document.createElement("span");
+    fileName.className = "queue-file";
+    fileName.textContent = record.filename;
+    name.appendChild(fileName);
+    const bates = recordBates(record);
+    if (bates) {
+      const batesEl = document.createElement("span");
+      batesEl.className = "queue-bates";
+      batesEl.textContent = `Bates ${bates}`;
+      name.appendChild(batesEl);
+    }
+    const state = document.createElement("span");
+    state.className = "queue-state";
+    state.textContent = queueStateLabel(record, progress);
+    button.append(number, name, state);
+    button.addEventListener("click", () => {
+      const next = recordById.get(record.review_id) || record;
+      showRecord(next);
+    });
+    item.appendChild(button);
+    return item;
+  }
+
+  function queueSpacer(height, side) {
+    const item = document.createElement("li");
+    item.className = `queue-spacer queue-spacer-${side}`;
+    item.style.height = `${Math.max(0, height)}px`;
+    item.setAttribute("aria-hidden", "true");
+    return item;
+  }
+
+  function paintQueueWindow(progress = loadProgress()) {
+    if (!els.list) return;
+    const total = visibleQueueRecords.length;
+    const view = els.list.clientHeight || 600;
+    const scroll = els.list.scrollTop || 0;
+    const start = Math.max(0, Math.floor(scroll / QUEUE_ROW_HEIGHT) - QUEUE_OVERSCAN);
+    const end = Math.min(total, Math.ceil((scroll + view) / QUEUE_ROW_HEIGHT) + QUEUE_OVERSCAN);
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(queueSpacer(start * QUEUE_ROW_HEIGHT, "top"));
+    for (let i = start; i < end; i += 1) fragment.appendChild(buildQueueItem(visibleQueueRecords[i], progress));
+    fragment.appendChild(queueSpacer(Math.max(0, (total - end) * QUEUE_ROW_HEIGHT), "bottom"));
+    els.list.innerHTML = "";
+    els.list.appendChild(fragment);
+  }
+
+  function onQueueScroll() {
+    if (queueRenderFrame) return;
+    queueRenderFrame = window.requestAnimationFrame(() => {
+      queueRenderFrame = 0;
+      paintQueueWindow();
+    });
   }
 
   function renderList() {
-    els.list.innerHTML = "";
     const progress = loadProgress();
-    const fragment = document.createDocumentFragment();
-    filteredRecords().forEach((record) => {
-      const reviewed = isReviewed(record, progress);
-      const notesOnly = needsDropdown(record, progress);
-      const item = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `${active && active.review_id === record.review_id ? "active " : ""}${reviewed ? "reviewed" : notesOnly ? "needs-dropdown" : "pending"}`.trim();
-      button.dataset.reviewId = record.review_id;
-      const number = document.createElement("span");
-      number.className = "queue-number";
-      number.textContent = `${record.queue_number}.`;
-      const name = document.createElement("span");
-      name.className = "queue-name";
-      const fileName = document.createElement("span");
-      fileName.className = "queue-file";
-      fileName.textContent = record.filename;
-      name.appendChild(fileName);
-      const bates = recordBates(record);
-      if (bates) {
-        const batesEl = document.createElement("span");
-        batesEl.className = "queue-bates";
-        batesEl.textContent = `Bates ${bates}`;
-        name.appendChild(batesEl);
-      }
-      const state = document.createElement("span");
-      state.className = "queue-state";
-      state.textContent = reviewed ? "Done" : notesOnly ? "Needs dropdown" : "Open";
-      button.append(number, name, state);
-      button.addEventListener("click", () => showRecord(record));
-      item.appendChild(button);
-      fragment.appendChild(item);
-    });
-    els.list.appendChild(fragment);
+    visibleQueueRecords = filteredRecords(progress);
+    if (els.list && !els.list.dataset.virtualBound) {
+      els.list.dataset.virtualBound = "1";
+      els.list.addEventListener("scroll", onQueueScroll, { passive: true });
+    }
+    paintQueueWindow(progress);
     updateQueueSummary();
     updateReviewNavigation();
     scrollActiveIntoView();
@@ -1195,7 +1303,10 @@
       clearAuth();
       manifest = null;
       records = [];
+      recordById = new Map();
+      visibleQueueRecords = [];
       active = null;
+      invalidateProgressCache();
       els.signIn.hidden = false;
       els.signOut.hidden = true;
       els.view.hidden = true;
@@ -1206,7 +1317,10 @@
       updateReviewNavigation();
       setStatus("Signed out.");
     });
-    els.search.addEventListener("input", selectVisibleRecordAfterFilter);
+    els.search.addEventListener("input", () => {
+      window.clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = window.setTimeout(selectVisibleRecordAfterFilter, QUEUE_SEARCH_DEBOUNCE_MS);
+    });
     els.filter.addEventListener("change", selectVisibleRecordAfterFilter);
     if (els.jumpActive) els.jumpActive.addEventListener("click", scrollActiveIntoView);
     if (els.previousRecord) els.previousRecord.addEventListener("click", () => selectRecordAt(activeIndex() - 1));
@@ -1235,6 +1349,7 @@
         window.localStorage.removeItem(progressKey());
         window.localStorage.removeItem(saveStampKey());
         window.localStorage.removeItem(onlineSyncStampKey());
+        invalidateProgressCache();
         updateSaveStatus("Autosave reset");
         if (active) showRecord(active);
       }

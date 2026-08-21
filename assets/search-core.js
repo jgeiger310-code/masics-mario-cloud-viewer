@@ -277,8 +277,7 @@
       identifiers,
       has_ocr_sidecar: truthy(record.has_ocr_sidecar) || Boolean(record.ocr_text || record.ocr),
       has_transcript_sidecar: truthy(record.has_transcript_sidecar) || Boolean(record.transcript_text || record.transcript),
-      years: Array.isArray(record.years) ? record.years.map(Number).filter(Number.isFinite) : [],
-      raw: record
+      years: Array.isArray(record.years) ? record.years.map(Number).filter(Number.isFinite) : []
     };
     normalized.path = normalized.dropbox_path;
     normalized._fields = {};
@@ -436,9 +435,11 @@
       const candidates = this.prefixVocabulary.get(term.slice(0, 3)) || [];
       return candidates
         .filter((candidate) => candidate !== term && Math.abs(candidate.length - term.length) <= maxDistance + 1)
-        .filter((candidate) => levenshtein(term, candidate, maxDistance) <= maxDistance)
-        .sort((a, b) => levenshtein(term, a, maxDistance) - levenshtein(term, b, maxDistance) || a.localeCompare(b))
-        .slice(0, 6);
+        .map((candidate) => [candidate, levenshtein(term, candidate, maxDistance)])
+        .filter((entry) => entry[1] <= maxDistance)
+        .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+        .slice(0, 6)
+        .map((entry) => entry[0]);
     }
 
     termPostings(term, field) {

@@ -21,6 +21,25 @@
 
   window.MASICS_NEEDS_REVIEW_FILTER_VERSION = VERSION;
 
+  if (window.MASICS_NATIVE_QUEUE_FILTERS) {
+    if (![...filter.options].some((option) => option.value === FILTER_VALUE)) {
+      const option = document.createElement("option");
+      option.value = FILTER_VALUE;
+      option.textContent = FILTER_LABEL;
+      const reviewedOption = [...filter.options].find((candidate) => candidate.value === "reviewed");
+      filter.insertBefore(option, reviewedOption || null);
+    }
+    window.MASICS_NEEDS_REVIEW_FILTER_SELF_TEST = () => ({
+      version: VERSION,
+      optionPresent: [...filter.options].some((option) => option.value === FILTER_VALUE),
+      nativeQueueFilters: true,
+      filtersFromSavedReviewId: true,
+      delaysAutoSelection: AUTO_SELECT_DELAY_MS >= 1000,
+      cancelsStaleSelection: true
+    });
+    return;
+  }
+
   if (![...filter.options].some((option) => option.value === FILTER_VALUE)) {
     const option = document.createElement("option");
     option.value = FILTER_VALUE;

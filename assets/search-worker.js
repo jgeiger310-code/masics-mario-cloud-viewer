@@ -9,16 +9,12 @@ self.addEventListener("message", (event) => {
     if (message.type === "build") {
       engine = new self.MASICSSearchCore.SearchEngine(message.records || []);
       engine.build((percent) => self.postMessage({ type: "build-progress", percent }));
-      let serialized = null;
-      try {
-        serialized = engine.serialize();
-      } catch {
-        serialized = null;
-      }
+      // Keep the index in the worker. Cloning a serialized OCR index onto the
+      // main thread previously froze Search after catalog enrichment.
       self.postMessage({
         type: "build-complete",
         count: engine.docs.length,
-        serialized
+        serialized: null
       });
       return;
     }
