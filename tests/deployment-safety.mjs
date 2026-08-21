@@ -34,12 +34,12 @@ assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260720-thumbnail-m
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("assets/app.js"), "Image thumbnails must register before the app selects records");
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
-assert.match(index, /assets\/app\.js\?v=20260724-queue-count-clarity-2/, "App queue count clarity cache bust is missing");
+assert.match(index, /assets\/app\.js\?v=20260821-legal-export-progress-1/, "App legal export cache bust is missing");
 assert.match(index, /'wasm-unsafe-eval'/, "AMR WebAssembly decoder CSP permission is missing");
 assert.match(index, /assets\/amr-preview\.js\?v=20260728-amr-wasm-csp-3/, "AMR playback handler cache bust is missing");
 assert.ok(index.indexOf("amr-preview.js") < index.indexOf("safe-preview.js"), "AMR handler must run before generic safe preview");
 assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
-assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/, "Lazy XLSX export cache bust is missing");
+assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260821-legal-missing-export-1/, "Legal Missing XLSX export cache bust is missing");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260724-save-total-guard-3/, "Verified online save guard is missing");
 assert.match(index, /assets\/ai-note-local-hydrator\.js\?v=20260721-ai-note-hydrator-1/, "AI-note local hydrator is missing");
 assert.ok(index.indexOf("save-online-merge.js") < index.indexOf("ai-note-local-hydrator.js"), "AI-note hydrator must run after save merge wiring");

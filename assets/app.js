@@ -922,17 +922,92 @@
     return records.map((record) => {
       const saved = decisions[record.review_id] || {};
       if (!saved.decision || saved.decision === "delete") return null;
+      const meta = legalMetadata(record, saved);
       return {
         queue_number: record.queue_number,
+        viewer_bates: meta.viewerBates,
+        source_bates: meta.sourceBates,
+        category: meta.category,
         filename: record.filename,
         review_id: record.review_id,
         file_type: record.file_type || record.extension || "",
         decision: saved.decision || "",
+        short_description: meta.shortDescription,
+        mario_note: meta.marioNote,
+        ai_description: meta.aiDescription,
         notes: saved.notes || "",
         updated_at: saved.updatedAt || "",
         dropbox_path: record.dropbox_path || ""
       };
     }).filter(Boolean);
+  }
+
+  function splitNotes(notes) {
+    const text = String(notes || "").trim();
+    const marker = text.search(/\bAI note:/i);
+    if (marker < 0) return { marioNote: text, aiDescription: "" };
+    return {
+      marioNote: text.slice(0, marker).trim(),
+      aiDescription: text.slice(marker).replace(/^AI note:\s*/i, "").trim()
+    };
+  }
+
+  function batesFromText(value) {
+    const text = String(value || "");
+    const match = text.match(/\bBATES:\s*([^|\n\r]+)/i) || text.match(/\bBates\s+([A-Z]{2,}[0-9][A-Z0-9]*(?:\s*[-–]\s*[A-Z]{2,}[0-9][A-Z0-9]*)?)/);
+    return match ? match[1].trim() : "";
+  }
+
+  function derivedCategory(record, display) {
+    const outcome = String(display.missing_discovery_outcomes || "").toUpperCase();
+    const requestIds = String(display.mfr_request_ids || "").trim();
+    const requestTitles = String(display.mfr_request_titles || "").trim();
+    const matchReason = String(display.match_reason || "").trim();
+    const sourceRoot = String(display.source_root_name || record.source_root_folder || record.source_root_name || "").trim();
+    const fileType = String(record.file_type || record.extension || "").toLowerCase();
+    let category = "";
+    if (requestIds || /\bMFR\b/i.test(matchReason) || /\bMFR\b/i.test(requestTitles)) {
+      category = "Discovery request / MFR evidence";
+    } else if (outcome.includes("DEFENSE_PRODUCTION")) {
+      category = "Defense production evidence";
+    } else if (outcome.includes("PLAINTIFF_EVIDENCE")) {
+      category = "Plaintiff evidence / missing discovery support";
+    } else if (/franklinville/i.test(sourceRoot)) {
+      category = "Franklinville municipal record";
+    } else if (/jpe?g|png|heic|tiff|image/.test(fileType)) {
+      category = "Image / screenshot evidence";
+    } else if (/pdf/.test(fileType)) {
+      category = "PDF document evidence";
+    }
+    const priority = String(display.priority_tier || "").trim();
+    const priorityCode = /^[A-Z]$|^\d+$/i.test(priority) ? priority : "";
+    return category && priorityCode ? `${category} (Priority ${priorityCode})` : category || (priorityCode ? `Legal review priority ${priorityCode}` : "");
+  }
+
+  function legalMetadata(record, saved) {
+    const display = record.display || {};
+    const notes = splitNotes(saved.notes || "");
+    const sourceBates = String(display.bates_range || display.bates_begin || batesFromText(saved.notes) || "").trim();
+    const viewerBates = String(display.viewer_bates || display.control_bates || (record.queue_number ? `MASICS-${String(record.queue_number).padStart(5, "0")}` : "")).trim();
+    const priorityTier = String(display.priority_tier || "").trim();
+    const descriptivePriorityCategory = /^[A-Z]$|^\d+$/i.test(priorityTier) || /_|APPEND|BUCKET|UNRANKED|STAGED/i.test(priorityTier) ? "" : priorityTier;
+    const category = String(
+      display.category ||
+      display.legal_category ||
+      descriptivePriorityCategory ||
+      derivedCategory(record, display) ||
+      ""
+    ).trim() || "Uncategorized / needs legal review";
+    const aiDescription = notes.aiDescription || String(display.ai_note || record.ai_note || "").trim();
+    const shortDescription = aiDescription || notes.marioNote || String(display.mfr_request_titles || record.filename || "").trim();
+    return {
+      viewerBates,
+      sourceBates,
+      category,
+      shortDescription,
+      marioNote: notes.marioNote,
+      aiDescription
+    };
   }
 
   function buildOnlinePayload() {
@@ -997,8 +1072,20 @@
   function downloadProgress(prefix = "masics-progress") {
     const progress = loadProgress();
     const exportedAt = new Date().toISOString();
-    progress.exportedAt = exportedAt;
-    const blob = new Blob([JSON.stringify(progress, null, 2)], { type: "application/json" });
+    const tagged = taggedRows(progress);
+    const payload = {
+      ...progress,
+      schema: progress.schema || "MASICS_MARIO_PROGRESS_EXPORT_V2",
+      queueIdentity: cfg.queueIdentity,
+      queueVersion: cfg.queueVersion,
+      exportedAt,
+      total: records.length,
+      reviewed: tagged.length,
+      pending: Math.max(0, records.length - tagged.length),
+      decisions: progress.decisions || {},
+      tagged
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

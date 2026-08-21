@@ -155,6 +155,74 @@
     return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   }
 
+  function splitNotes(notes) {
+    const text = String(notes || "").trim();
+    const marker = text.search(/\bAI note:/i);
+    if (marker < 0) return { marioNote: text, aiDescription: "" };
+    return {
+      marioNote: text.slice(0, marker).trim(),
+      aiDescription: text.slice(marker).replace(/^AI note:\s*/i, "").trim()
+    };
+  }
+
+  function batesFromText(value) {
+    const text = String(value || "");
+    const match = text.match(/\bBATES:\s*([^|\n\r]+)/i) || text.match(/\bBates\s+([A-Z]{2,}[0-9][A-Z0-9]*(?:\s*[-–]\s*[A-Z]{2,}[0-9][A-Z0-9]*)?)/);
+    return match ? match[1].trim() : "";
+  }
+
+  function derivedCategory(record, display) {
+    const outcome = String(display.missing_discovery_outcomes || "").toUpperCase();
+    const requestIds = String(display.mfr_request_ids || "").trim();
+    const requestTitles = String(display.mfr_request_titles || "").trim();
+    const matchReason = String(display.match_reason || "").trim();
+    const sourceRoot = String(display.source_root_name || record.source_root_folder || record.source_root_name || "").trim();
+    const fileType = String(record.file_type || record.extension || "").toLowerCase();
+    let category = "";
+    if (requestIds || /\bMFR\b/i.test(matchReason) || /\bMFR\b/i.test(requestTitles)) {
+      category = "Discovery request / MFR evidence";
+    } else if (outcome.includes("DEFENSE_PRODUCTION")) {
+      category = "Defense production evidence";
+    } else if (outcome.includes("PLAINTIFF_EVIDENCE")) {
+      category = "Plaintiff evidence / missing discovery support";
+    } else if (/franklinville/i.test(sourceRoot)) {
+      category = "Franklinville municipal record";
+    } else if (/jpe?g|png|heic|tiff|image/.test(fileType)) {
+      category = "Image / screenshot evidence";
+    } else if (/pdf/.test(fileType)) {
+      category = "PDF document evidence";
+    }
+    const priority = String(display.priority_tier || "").trim();
+    const priorityCode = /^[A-Z]$|^\d+$/i.test(priority) ? priority : "";
+    return category && priorityCode ? `${category} (Priority ${priorityCode})` : category || (priorityCode ? `Legal review priority ${priorityCode}` : "");
+  }
+
+  function legalMetadata(record, saved) {
+    const display = record.display || {};
+    const notes = splitNotes(saved.notes || "");
+    const sourceBates = String(display.bates_range || display.bates_begin || batesFromText(saved.notes) || "").trim();
+    const viewerBates = String(display.viewer_bates || display.control_bates || (record.queue_number ? `MASICS-${String(record.queue_number).padStart(5, "0")}` : "")).trim();
+    const priorityTier = String(display.priority_tier || "").trim();
+    const descriptivePriorityCategory = /^[A-Z]$|^\d+$/i.test(priorityTier) || /_|APPEND|BUCKET|UNRANKED|STAGED/i.test(priorityTier) ? "" : priorityTier;
+    const category = String(
+      display.category ||
+      display.legal_category ||
+      descriptivePriorityCategory ||
+      derivedCategory(record, display) ||
+      ""
+    ).trim() || "Uncategorized / needs legal review";
+    const aiDescription = notes.aiDescription || String(display.ai_note || record.ai_note || "").trim();
+    const shortDescription = aiDescription || notes.marioNote || String(display.mfr_request_titles || record.filename || "").trim();
+    return {
+      viewerBates,
+      sourceBates,
+      category,
+      shortDescription,
+      marioNote: notes.marioNote,
+      aiDescription
+    };
+  }
+
   function downloadText(filename, text, type = "text/csv") {
     const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
@@ -170,10 +238,16 @@
     const decisions = readDecisionState();
     const rows = [[
       "queue_number",
+      "viewer_bates",
+      "source_bates",
+      "category",
       "filename",
       "review_id",
       "file_type",
       "decision",
+      "short_description",
+      "mario_note",
+      "ai_description",
       "notes",
       "updated_at",
       "reviewer",
@@ -184,12 +258,19 @@
     records.forEach((record) => {
       const saved = decisions[record.review_id] || {};
       if (!(saved.decision || saved.notes)) return;
+      const meta = legalMetadata(record, saved);
       rows.push([
         record.queue_number,
+        meta.viewerBates,
+        meta.sourceBates,
+        meta.category,
         record.filename,
         record.review_id,
         record.file_type || record.extension || "",
         saved.decision || "",
+        meta.shortDescription,
+        meta.marioNote,
+        meta.aiDescription,
         saved.notes || "",
         saved.updatedAt || "",
         reviewerName(),

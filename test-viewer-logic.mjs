@@ -45,9 +45,10 @@ const trackerReport = read("assets/tracker-report.js");
 test("main viewer loads the 7730 save guard and not the duplicate autosave shim", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260724-7730-count-guard-2/);
-  assert.match(html, /assets\/app\.js\?v=20260724-queue-count-clarity-2/);
+  assert.match(html, /assets\/app\.js\?v=20260821-legal-export-progress-1/);
   assert.match(html, /assets\/save-online-merge\.js\?v=20260724-save-total-guard-3/);
-  assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260718-lazy-xlsx-1/);
+  assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260821-legal-missing-export-1/);
+  assert.match(html, /assets\/tracker\.js\?v=20260821-legal-tagged-export-1/);
   assert.match(html, /Download All Missing Tags XLSX/);
   assert.doesNotMatch(html, /autosave-online-v3\.js/);
   assert.match(html, /updates the spreadsheet backup/);
@@ -236,15 +237,19 @@ test("marked csv contains reviewed, excluded, and notes rows only", () => {
 test("missing xlsx export includes every file tagged missing and only missing", () => {
   const code = [
     extractFunction(missingExport, "isMissingDecision"),
+    extractFunction(missingExport, "splitNotes"),
+    extractFunction(missingExport, "batesFromText"),
+    extractFunction(missingExport, "derivedCategory"),
+    extractFunction(missingExport, "legalMetadata"),
     extractFunction(missingExport, "missingRows"),
     `const manifest = { records: [
       { queue_number: 3, filename: "third.png", review_id: "third", file_type: "png", dropbox_path: "/third.png" },
-      { queue_number: 1, filename: "first.pdf", review_id: "first", file_type: "pdf", dropbox_path: "/first.pdf" },
-      { queue_number: 2, filename: "second.jpg", review_id: "second", file_type: "jpg", dropbox_path: "/second.jpg" },
+      { queue_number: 1, filename: "first.pdf", review_id: "first", file_type: "pdf", dropbox_path: "/first.pdf", display: { viewer_bates: "MASICS-00001 · DEF000001", bates_range: "DEF000001-DEF000002", category: "FOIL requests" } },
+      { queue_number: 2, filename: "second.jpg", review_id: "second", file_type: "jpg", dropbox_path: "/second.jpg", display: { control_bates: "MASICS-00002", priority_tier: "Town Board minutes", ai_note: "Fallback description" } },
       { queue_number: 4, filename: "fourth.jpg", review_id: "fourth", file_type: "jpg", dropbox_path: "/fourth.jpg" }
     ] };
     const progress = { decisions: {
-      first: { decision: " Missing ", notes: "case-insensitive", updatedAt: "2026-07-15T01:00:00Z" },
+      first: { decision: " Missing ", notes: "BATES: DEF000001-DEF000002 | Mario note\\n\\nAI note: Legal description", updatedAt: "2026-07-15T01:00:00Z" },
       second: { decision: "missing", notes: "plain", updatedAt: "2026-07-15T02:00:00Z" },
       third: { decision: "responsive", notes: "not exported", updatedAt: "2026-07-15T03:00:00Z" },
       fourth: { decision: "delete", notes: "not exported", updatedAt: "2026-07-15T04:00:00Z" }
@@ -257,6 +262,12 @@ test("missing xlsx export includes every file tagged missing and only missing", 
   assert.equal(context.rows.map((row) => row["Review ID"]).join(","), "first,second");
   assert.equal(context.rows.map((row) => row["Queue #"]).join(","), "1,2");
   assert.equal(context.rows[0]["Decision"], "Missing");
+  assert.equal(context.rows[0]["Bates Number"], "MASICS-00001 · DEF000001");
+  assert.equal(context.rows[0]["Source Bates / Range"], "DEF000001-DEF000002");
+  assert.equal(context.rows[0]["Category"], "FOIL requests");
+  assert.equal(context.rows[0]["Short Description"], "Legal description");
+  assert.equal(context.rows[0]["Mario's note / missing information"], "BATES: DEF000001-DEF000002 | Mario note");
+  assert.equal(context.rows[1]["Category"], "Town Board minutes");
 });
 
 test("tracker sees marked reviewed csv backups", () => {

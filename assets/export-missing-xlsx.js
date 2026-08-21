@@ -6,7 +6,7 @@
   const TOKEN_KEY = "masics_access_token";
   const AUTO_EXPORT_KEY = "masics_auto_export_missing_xlsx";
   const EXPORT_QUERY = "export_missing";
-  const VERSION = "20260715-missing-export-all-tags-1";
+  const VERSION = "20260821-legal-missing-export-1";
 
   if (!cfg) return;
   window.MASICS_MISSING_EXPORT_VERSION = VERSION;
@@ -85,17 +85,91 @@
     return manifest.records.map((record) => {
       const saved = progress.decisions[record.review_id] || {};
       if (!isMissingDecision(saved.decision)) return null;
+      const meta = legalMetadata(record, saved);
       return {
         "Queue #": Number(record.queue_number) || "",
+        "Bates Number": meta.viewerBates,
+        "Source Bates / Range": meta.sourceBates,
+        "Category": meta.category,
         "File name": String(record.filename || ""),
         "File type": String(record.file_type || record.extension || "").replace(/^\./, "").toUpperCase(),
-        "Mario's note / missing information": String(saved.notes || ""),
+        "Short Description": meta.shortDescription,
+        "Mario's note / missing information": meta.marioNote,
+        "AI Description": meta.aiDescription,
         "Date tagged": String(saved.updatedAt || ""),
         "Review ID": String(record.review_id || ""),
         "Dropbox path": String(record.dropbox_path || ""),
         "Decision": "Missing"
       };
     }).filter(Boolean).sort((a, b) => Number(a["Queue #"]) - Number(b["Queue #"]));
+  }
+
+  function splitNotes(notes) {
+    const text = String(notes || "").trim();
+    const marker = text.search(/\bAI note:/i);
+    if (marker < 0) return { marioNote: text, aiDescription: "" };
+    return {
+      marioNote: text.slice(0, marker).trim(),
+      aiDescription: text.slice(marker).replace(/^AI note:\s*/i, "").trim()
+    };
+  }
+
+  function batesFromText(value) {
+    const text = String(value || "");
+    const match = text.match(/\bBATES:\s*([^|\n\r]+)/i) || text.match(/\bBates\s+([A-Z]{2,}[0-9][A-Z0-9]*(?:\s*[-–]\s*[A-Z]{2,}[0-9][A-Z0-9]*)?)/);
+    return match ? match[1].trim() : "";
+  }
+
+  function derivedCategory(record, display) {
+    const outcome = String(display.missing_discovery_outcomes || "").toUpperCase();
+    const requestIds = String(display.mfr_request_ids || "").trim();
+    const requestTitles = String(display.mfr_request_titles || "").trim();
+    const matchReason = String(display.match_reason || "").trim();
+    const sourceRoot = String(display.source_root_name || record.source_root_folder || record.source_root_name || "").trim();
+    const fileType = String(record.file_type || record.extension || "").toLowerCase();
+    let category = "";
+    if (requestIds || /\bMFR\b/i.test(matchReason) || /\bMFR\b/i.test(requestTitles)) {
+      category = "Discovery request / MFR evidence";
+    } else if (outcome.includes("DEFENSE_PRODUCTION")) {
+      category = "Defense production evidence";
+    } else if (outcome.includes("PLAINTIFF_EVIDENCE")) {
+      category = "Plaintiff evidence / missing discovery support";
+    } else if (/franklinville/i.test(sourceRoot)) {
+      category = "Franklinville municipal record";
+    } else if (/jpe?g|png|heic|tiff|image/.test(fileType)) {
+      category = "Image / screenshot evidence";
+    } else if (/pdf/.test(fileType)) {
+      category = "PDF document evidence";
+    }
+    const priority = String(display.priority_tier || "").trim();
+    const priorityCode = /^[A-Z]$|^\d+$/i.test(priority) ? priority : "";
+    return category && priorityCode ? `${category} (Priority ${priorityCode})` : category || (priorityCode ? `Legal review priority ${priorityCode}` : "");
+  }
+
+  function legalMetadata(record, saved) {
+    const display = record.display || {};
+    const notes = splitNotes(saved.notes || "");
+    const sourceBates = String(display.bates_range || display.bates_begin || batesFromText(saved.notes) || "").trim();
+    const viewerBates = String(display.viewer_bates || display.control_bates || (record.queue_number ? `MASICS-${String(record.queue_number).padStart(5, "0")}` : "")).trim();
+    const priorityTier = String(display.priority_tier || "").trim();
+    const descriptivePriorityCategory = /^[A-Z]$|^\d+$/i.test(priorityTier) || /_|APPEND|BUCKET|UNRANKED|STAGED/i.test(priorityTier) ? "" : priorityTier;
+    const category = String(
+      display.category ||
+      display.legal_category ||
+      descriptivePriorityCategory ||
+      derivedCategory(record, display) ||
+      ""
+    ).trim() || "Uncategorized / needs legal review";
+    const aiDescription = notes.aiDescription || String(display.ai_note || record.ai_note || "").trim();
+    const shortDescription = aiDescription || notes.marioNote || String(display.mfr_request_titles || record.filename || "").trim();
+    return {
+      viewerBates,
+      sourceBates,
+      category,
+      shortDescription,
+      marioNote: notes.marioNote,
+      aiDescription
+    };
   }
 
   function isMissingDecision(decision) {
@@ -107,9 +181,14 @@
     const worksheet = window.XLSX.utils.json_to_sheet(rows, {
       header: [
         "Queue #",
+        "Bates Number",
+        "Source Bates / Range",
+        "Category",
         "File name",
         "File type",
+        "Short Description",
         "Mario's note / missing information",
+        "AI Description",
         "Date tagged",
         "Review ID",
         "Dropbox path",
@@ -118,15 +197,20 @@
     });
     worksheet["!cols"] = [
       { wch: 10 },
+      { wch: 28 },
+      { wch: 28 },
+      { wch: 34 },
       { wch: 38 },
       { wch: 12 },
+      { wch: 75 },
+      { wch: 75 },
       { wch: 75 },
       { wch: 25 },
       { wch: 74 },
       { wch: 75 },
       { wch: 12 }
     ];
-    if (rows.length) worksheet["!autofilter"] = { ref: `A1:H${rows.length + 1}` };
+    if (rows.length) worksheet["!autofilter"] = { ref: `A1:M${rows.length + 1}` };
 
     const workbook = window.XLSX.utils.book_new();
     workbook.Props = {
@@ -247,7 +331,7 @@
     includesOnlyMissingRows: missingRows({
       records: [
         { queue_number: 2, filename: "b.pdf", review_id: "b", file_type: "pdf", dropbox_path: "/b.pdf" },
-        { queue_number: 1, filename: "a.jpg", review_id: "a", file_type: "jpg", dropbox_path: "/a.jpg" },
+        { queue_number: 1, filename: "a.jpg", review_id: "a", file_type: "jpg", dropbox_path: "/a.jpg", display: { viewer_bates: "MASICS-00001 · DEF000001", bates_range: "DEF000001", category: "FOIL requests" } },
         { queue_number: 3, filename: "c.png", review_id: "c", file_type: "png", dropbox_path: "/c.png" }
       ]
     }, {
@@ -257,6 +341,9 @@
         c: { decision: "responsive", notes: "not missing", updatedAt: "2026-07-15T03:00:00Z" }
       }
     }).map((row) => row["Review ID"]).join(",") === "a,b",
+    includesLegalColumns: missingRows({ records: [
+      { queue_number: 1, filename: "a.jpg", review_id: "a", file_type: "jpg", dropbox_path: "/a.jpg", display: { viewer_bates: "MASICS-00001 · DEF000001", bates_range: "DEF000001", category: "FOIL requests", ai_note: "Town record" } }
+    ] }, { decisions: { a: { decision: "missing", notes: "BATES: DEF000001 | note\n\nAI note: Town record", updatedAt: "2026-07-15T01:00:00Z" } } })[0]["Bates Number"] === "MASICS-00001 · DEF000001",
     writesXlsx: /writeFile/.test(exportWorkbook.toString()),
     autoExportQuerySupported: EXPORT_QUERY === "export_missing"
   });
