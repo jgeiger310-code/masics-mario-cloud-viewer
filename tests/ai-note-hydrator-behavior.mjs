@@ -124,6 +124,7 @@ assert.equal(hydrated.decisions.r1.notes, "Mario local note\n\nAI note: r1 analy
 assert.equal(hydrated.decisions.r2.decision, "delete", "delete decisions must be preserved");
 assert.match(hydrated.decisions.r2.notes, /AI note: r2 analysis/, "AI note must append to deleted local note without restoring it");
 assert.equal(hydrated.decisions.r3.notes, "AI note: r3 pending analysis", "online AI note-only pending records must be adopted");
+assert.equal(hydrated.decisions.r3.decision, "", "hydrating an AI note must not invent a review dropdown");
 assert.equal(hydrated.decisions.unknown, undefined, "unknown online records must not be attached to the loaded queue");
 assert.match(elements.notes.value, /AI note: r1 analysis/, "visible notes field must refresh after hydration");
 assert.match(elements["save-status"].textContent, /AI notes loaded/, "viewer should report that AI notes loaded locally");

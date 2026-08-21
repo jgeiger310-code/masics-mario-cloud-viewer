@@ -41,6 +41,7 @@ assert.ok(index.indexOf("amr-preview.js") < index.indexOf("safe-preview.js"), "A
 assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260821-legal-missing-export-1/, "Legal Missing XLSX export cache bust is missing");
 assert.match(index, /assets\/save-online-merge\.js\?v=20260821-save-total-guard-4/, "Verified online save guard is missing");
+assert.match(index, /assets\/notes-count-as-reviewed\.js\?v=20260821-ai-note-not-dropdown-1/, "AI-note must not auto-fill the review dropdown");
 assert.match(index, /assets\/ai-note-local-hydrator\.js\?v=20260721-ai-note-hydrator-1/, "AI-note local hydrator is missing");
 assert.ok(index.indexOf("save-online-merge.js") < index.indexOf("ai-note-local-hydrator.js"), "AI-note hydrator must run after save merge wiring");
 assert.ok(index.indexOf("ai-note-local-hydrator.js") < index.indexOf("safe-preview.js"), "AI-note hydrator must run before preview helpers start reacting to the active record");
@@ -135,6 +136,12 @@ assert.match(saveMerge, /saved decision map does not cover the full protected qu
 assert.match(saveMerge, /pending records are preserved as blank decision entries/, "Save policy must preserve pending records in progress JSON");
 assert.match(saveMerge, /generated status rows do not cover the full protected queue/, "Save must abort if generated status rows do not cover every protected record");
 assert.match(saveMerge, /Total records: \$\{records\.length\}/, "Save confirmation must show protected total count");
+
+const notesCountAsReviewed = read("assets/notes-count-as-reviewed.js");
+assert.match(notesCountAsReviewed, /20260821-ai-note-not-dropdown-1/, "Notes-count-as-reviewed must ignore AI-only notes");
+assert.match(notesCountAsReviewed, /function reviewerNotes/, "AI notes must be stripped before a notes-only dropdown default");
+assert.match(notesCountAsReviewed, /scrubLocalAutoNeedsReview/, "Local auto Needs review marks from AI-only notes must be cleared");
+assert.match(notesCountAsReviewed, /MASICS_NOTES_COUNT_AS_REVIEWED_SELF_TEST/, "Notes-count-as-reviewed self-test is missing");
 
 assert.match(aiHydrator, /MASICS_AI_NOTE_HYDRATOR_VERSION/, "AI-note hydrator version flag is missing");
 assert.match(aiHydrator, /files\/download/, "AI-note hydrator must read the latest Dropbox progress");
