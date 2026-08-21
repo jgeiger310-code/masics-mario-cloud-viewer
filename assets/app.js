@@ -106,6 +106,39 @@
     return String(value || "");
   }
 
+  let batesIndex = null;
+
+  async function loadBatesIndex() {
+    if (batesIndex) return batesIndex;
+    try {
+      const response = await fetch("assets/bates-index.json?v=20260818-bates-all-1");
+      batesIndex = response.ok ? await response.json() : {};
+    } catch {
+      batesIndex = {};
+    }
+    return batesIndex;
+  }
+
+  function recordBates(record) {
+    const display = record && record.display ? record.display : {};
+    const labeled = String(display.viewer_bates || "").trim();
+    if (labeled) return labeled;
+    const fromIndex = batesIndex && record && record.review_id ? String(batesIndex[record.review_id] || "").trim() : "";
+    if (fromIndex) return fromIndex;
+    const assigned = String(display.control_bates || "").trim();
+    const range = String(display.bates_range || "").trim();
+    const begin = String(display.bates_begin || "").trim();
+    const end = String(display.bates_end || "").trim();
+    const prod = range || (begin && end && begin !== end ? `${begin}–${end}` : begin);
+    const blob = `${record && record.filename || ""} ${record && record.relative_path || ""} ${record && record.dropbox_path || ""}`;
+    const match = blob.toUpperCase().match(/\b((?:DEF|PLF)\d{5,})\b/);
+    const stamped = prod || (match ? match[1] : "");
+    const qn = Number(record && record.queue_number);
+    const control = assigned || (Number.isFinite(qn) && qn > 0 ? `MASICS-${String(qn).padStart(5, "0")}` : "");
+    if (control && stamped && stamped !== control) return `${control} · ${stamped}`;
+    return control || stamped || "";
+  }
+
   function cssEscape(value) {
     if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(String(value));
     return String(value).replace(/["\\]/g, "\\$&");
@@ -648,6 +681,12 @@
     validateManifest(loaded);
     manifest = loaded;
     records = loaded.records;
+    await loadBatesIndex();
+    records.forEach((record) => {
+      record.display = record.display || {};
+      const bates = recordBates(record);
+      if (bates) record.display.viewer_bates = bates;
+    });
     window.MASICS_QUEUE_RECORDS = records;
     const onlineSync = await syncOnlineProgressIntoBrowser();
     // Always recompute from decision objects for the active queue — never trust stale footer/summary alone.
@@ -713,7 +752,7 @@
       if (els.filter.value === "reviewed" && !reviewed) return false;
       if (els.filter.value === "duplicate" && saved.decision !== "duplicate") return false;
       if (!q) return true;
-      return [record.filename, record.review_id, record.display?.mfr_request_ids, saved.decision, saved.notes].some((v) => String(v || "").toLowerCase().includes(q));
+      return [record.filename, record.review_id, record.display?.mfr_request_ids, record.display?.bates_range, record.display?.bates_begin, record.display?.bates_end, recordBates(record), saved.decision, saved.notes].some((v) => String(v || "").toLowerCase().includes(q));
     });
   }
 
@@ -751,7 +790,17 @@
       number.textContent = `${record.queue_number}.`;
       const name = document.createElement("span");
       name.className = "queue-name";
-      name.textContent = record.filename;
+      const fileName = document.createElement("span");
+      fileName.className = "queue-file";
+      fileName.textContent = record.filename;
+      name.appendChild(fileName);
+      const bates = recordBates(record);
+      if (bates) {
+        const batesEl = document.createElement("span");
+        batesEl.className = "queue-bates";
+        batesEl.textContent = `Bates ${bates}`;
+        name.appendChild(batesEl);
+      }
       const state = document.createElement("span");
       state.className = "queue-state";
       state.textContent = reviewed ? "Done" : notesOnly ? "Needs dropdown" : "Open";
@@ -774,9 +823,22 @@
     els.empty.hidden = true;
     els.view.hidden = false;
     els.pos.textContent = `Record ${record.queue_number} of ${records.length}`;
+    const bates = recordBates(record);
     els.title.textContent = record.filename;
+    let banner = document.getElementById("record-bates");
+    if (!banner && els.title && els.title.parentElement) {
+      banner = document.createElement("p");
+      banner.id = "record-bates";
+      banner.className = "record-bates";
+      els.title.insertAdjacentElement("afterend", banner);
+    }
+    if (banner) {
+      banner.textContent = bates ? `Bates ${bates}` : "";
+      banner.hidden = !bates;
+    }
     els.meta.innerHTML = "";
     const fields = [
+      ["Bates", bates],
       ["Review ID", record.review_id],
       ["File Type", record.file_type],
       ["MFR IDs", record.display?.mfr_request_ids || ""],
