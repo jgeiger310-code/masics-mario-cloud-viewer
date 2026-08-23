@@ -14,7 +14,7 @@
   let refreshTimer = 0;
   let loadInFlight = false;
 
-  window.MASICS_TRACKER_REPORT_VERSION = "20260715-marked-backups-1";
+  window.MASICS_TRACKER_REPORT_VERSION = "20260821-ai-notes-not-notes-1";
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -272,6 +272,12 @@
     return (latestProgress?.decisions || {})[reviewId] || {};
   }
 
+  function reviewerNotes(text) {
+    const raw = String(text || "");
+    const marker = raw.search(/\bAI note:/i);
+    return (marker >= 0 ? raw.slice(0, marker) : raw).trim();
+  }
+
   function rowStateFor(record) {
     const saved = savedFor(record.review_id);
     const decision = saved?.decision || "";
@@ -297,7 +303,7 @@
         filename: record.filename || reviewId,
         reviewId,
         decision,
-        needsDropdown: Boolean(!decision && String(notes).trim()),
+        needsDropdown: Boolean(!decision && reviewerNotes(notes)),
         notes,
         updatedAt: saved?.updatedAt || "",
         fileType: record.file_type || record.extension || ""

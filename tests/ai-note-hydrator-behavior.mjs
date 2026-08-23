@@ -126,7 +126,8 @@ assert.match(hydrated.decisions.r2.notes, /AI note: r2 analysis/, "AI note must 
 assert.equal(hydrated.decisions.r3.notes, "AI note: r3 pending analysis", "online AI note-only pending records must be adopted");
 assert.equal(hydrated.decisions.r3.decision, "", "hydrating an AI note must not invent a review dropdown");
 assert.equal(hydrated.decisions.unknown, undefined, "unknown online records must not be attached to the loaded queue");
-assert.match(elements.notes.value, /AI note: r1 analysis/, "visible notes field must refresh after hydration");
+assert.equal(elements.notes.value, "Mario local note", "visible notes field must show Mario's notes, not the AI note");
+assert.match(hydrated.decisions.r1.notes, /AI note: r1 analysis/, "stored progress must still keep the AI note");
 assert.match(elements["save-status"].textContent, /AI notes loaded/, "viewer should report that AI notes loaded locally");
 assert.equal(context.window.MASICS_AI_NOTE_HYDRATOR_LAST_RESULT.afterAI, 3);
 

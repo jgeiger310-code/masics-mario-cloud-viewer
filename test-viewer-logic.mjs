@@ -45,8 +45,8 @@ const trackerReport = read("assets/tracker-report.js");
 test("main viewer loads the 7730 save guard and not the duplicate autosave shim", () => {
   const html = read("index.html");
   assert.match(html, /assets\/config\.js\?v=20260724-7730-count-guard-2/);
-  assert.match(html, /assets\/app\.js\?v=20260821-perf-1/);
-  assert.match(html, /assets\/save-online-merge\.js\?v=20260821-save-total-guard-4/);
+  assert.match(html, /assets\/app\.js\?v=20260821-ai-notes-not-notes-1/);
+  assert.match(html, /assets\/save-online-merge\.js\?v=20260821-ai-notes-not-notes-1/);
   assert.match(html, /assets\/export-missing-xlsx\.js\?v=20260821-legal-missing-export-1/);
   assert.match(html, /assets\/tracker\.js\?v=20260821-legal-tagged-export-1/);
   assert.match(html, /Download All Missing Tags XLSX/);
@@ -177,7 +177,7 @@ test("save merge protects newer online decisions from stale local sessions", () 
 });
 
 test("save path writes progress, full status csv, marked csv, audit, and manual snapshots", () => {
-  assert.match(read("index.html"), /assets\/save-online-merge\.js\?v=20260821-save-total-guard-4/);
+  assert.match(read("index.html"), /assets\/save-online-merge\.js\?v=20260821-ai-notes-not-notes-1/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_PROGRESS_LATEST\.json/);
   assert.match(saveMerge, /MASICS_MARIO_REVIEW_STATUS_LATEST\.csv/);
   assert.match(saveMerge, /MASICS_MARIO_MARKED_REVIEWED_LATEST\.csv/);
@@ -208,6 +208,7 @@ test("marked csv contains reviewed, excluded, and notes rows only", () => {
   const code = [
     extractFunction(saveMerge, "allowedDecision"),
     extractFunction(saveMerge, "buildRows"),
+    extractFunction(saveMerge, "reviewerNotes"),
     extractFunction(saveMerge, "markedRows"),
     extractFunction(saveMerge, "csvEscape"),
     extractFunction(saveMerge, "csv"),
@@ -270,6 +271,20 @@ test("missing xlsx export includes every file tagged missing and only missing", 
   assert.equal(context.rows[1]["Category"], "Town Board minutes");
 });
 
+test("AI-only notes stay pending and do not count as Mario notes", () => {
+  const context = { progressFor() { return {}; } };
+  vm.runInNewContext(
+    `${extractFunction(app, "splitNotes")}\n${extractFunction(app, "reviewerNotes")}\n${extractFunction(app, "needsDropdown")}\nthis.splitNotes = splitNotes;\nthis.reviewerNotes = reviewerNotes;\nthis.needsDropdown = needsDropdown;`,
+    context
+  );
+  const rec = { review_id: "a" };
+  assert.equal(context.needsDropdown(rec, { decisions: { a: { decision: "", notes: "AI note: leftover OCR" } } }), false);
+  assert.equal(context.needsDropdown(rec, { decisions: { a: { decision: "", notes: "Mario look\n\nAI note: leftover OCR" } } }), true);
+  assert.equal(context.needsDropdown(rec, { decisions: { a: { decision: "privileged", notes: "AI note: leftover OCR" } } }), false);
+  assert.equal(context.reviewerNotes("AI note: leftover OCR"), "");
+  assert.equal(context.splitNotes("Mario look\n\nAI note: leftover OCR").marioNote, "Mario look");
+});
+
 test("viewer uses native missing/needs-review filters and a progress cache", () => {
   const html = read("index.html");
   const fn = extractFunction(app, "filteredRecords");
@@ -296,7 +311,7 @@ test("save reuses loaded queue and does not duplicate tagged rows into progress 
 
 test("tracker sees marked reviewed csv backups", () => {
   const html = read("tracker.html");
-  assert.match(html, /assets\/tracker-report\.js\?v=20260715-marked-backups-1/);
+  assert.match(html, /assets\/tracker-report\.js\?v=20260821-ai-notes-not-notes-1/);
   assert.match(trackerReport, /MARKED_REVIEWED/);
 });
 

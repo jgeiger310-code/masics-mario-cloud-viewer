@@ -3,7 +3,7 @@
 
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const DROPBOX_RPC = "https://api.dropboxapi.com/2/";
-  const VERSION = "20260821-save-total-guard-4";
+  const VERSION = "20260821-ai-notes-not-notes-1";
   const NOTES_BUFFERED_COMMIT_DELAY_MS = 0;
   const NOTES_FALLBACK_DELAY_MS = 10000;
   const DECISION_SAVE_DELAY_MS = 900;
@@ -323,8 +323,14 @@
     });
   }
 
+  function reviewerNotes(text) {
+    const raw = String(text || "");
+    const marker = raw.search(/\bAI note:/i);
+    return (marker >= 0 ? raw.slice(0, marker) : raw).trim();
+  }
+
   function markedRows(rows) {
-    return rows.filter((row) => row.reviewed || row.excluded || String(row.notes || "").trim());
+    return rows.filter((row) => row.reviewed || row.excluded || reviewerNotes(row.notes));
   }
 
   function csvEscape(value) {

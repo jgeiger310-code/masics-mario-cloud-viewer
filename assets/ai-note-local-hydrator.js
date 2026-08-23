@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260721-ai-note-hydrator-1";
+  const VERSION = "20260821-ai-notes-not-notes-1";
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const AI_MARKER = "AI note:";
   const RETRY_DELAYS_MS = [250, 1500, 4000];
@@ -138,8 +138,13 @@
     const saved = decisions[reviewId] || {};
     const notes = document.getElementById("notes");
     const decision = document.getElementById("decision");
-    if (notes && document.activeElement !== notes && !String(notes.value || "").includes(AI_MARKER) && hasAINote(saved)) {
-      notes.value = String(saved.notes || "");
+    if (notes && document.activeElement !== notes && hasAINote(saved)) {
+      const raw = String(saved.notes || "");
+      const marker = raw.search(/\bAI note:/i);
+      const marioNotes = (marker >= 0 ? raw.slice(0, marker) : raw).trim();
+      if (String(notes.value || "").includes(AI_MARKER) || !String(notes.value || "").trim()) {
+        notes.value = marioNotes;
+      }
     }
     if (decision && document.activeElement !== decision && !String(decision.value || "") && String(saved.decision || "")) {
       decision.value = String(saved.decision || "");

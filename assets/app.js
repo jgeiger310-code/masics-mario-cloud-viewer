@@ -358,9 +358,13 @@
     return saved.decision === "delete";
   }
 
+  function reviewerNotes(text) {
+    return splitNotes(text).marioNote;
+  }
+
   function needsDropdown(record, progress = null) {
     const saved = progress ? (progress.decisions[record.review_id] || {}) : progressFor(record.review_id);
-    return Boolean(!saved.decision && String(saved.notes || "").trim());
+    return Boolean(!saved.decision && reviewerNotes(saved.notes));
   }
 
   function reviewCounts() {
@@ -468,7 +472,8 @@
   function setProgressFor(id, patch) {
     const progress = loadProgress();
     const savedAt = new Date().toISOString();
-    progress.decisions[id] = { ...(progress.decisions[id] || {}), ...patch, updatedAt: savedAt };
+    const current = progress.decisions[id] || {};
+    progress.decisions[id] = notesWithPreservedAINote(current, { ...current, ...patch, updatedAt: savedAt });
     saveProgress(progress);
     markSaved(savedAt);
     const needsFullListRefresh = els.search.value.trim() || els.filter.value !== "all" || patch.decision === "delete";
@@ -790,7 +795,7 @@
       const saved = progress.decisions[record.review_id] || {};
       if (saved.decision === "delete") return false;
       const reviewed = Boolean(saved.decision);
-      const notesOnly = Boolean(!saved.decision && String(saved.notes || "").trim());
+      const notesOnly = Boolean(!saved.decision && reviewerNotes(saved.notes));
       if (filterValue === "pending" && reviewed) return false;
       if (filterValue === "needs_dropdown" && !notesOnly) return false;
       if (filterValue === "reviewed" && !reviewed) return false;
@@ -839,8 +844,7 @@
     if (els.filter.value === "missing" && saved.decision === "missing") return "Missing";
     if (els.filter.value === "needs_review" && saved.decision === "needs_review") return "Needs review";
     if (isReviewed(record, progress)) return "Done";
-    if (needsDropdown(record, progress)) return "Needs dropdown";
-    return "Open";
+    return "Pending";
   }
 
   function buildQueueItem(record, progress) {
@@ -945,23 +949,27 @@
       banner.hidden = !bates;
     }
     els.meta.innerHTML = "";
+    const saved = progressFor(record.review_id);
+    const split = splitNotes(saved.notes);
+    const aiDescription = split.aiDescription || String(record.display?.ai_note || record.ai_note || "").trim();
     const fields = [
       ["Bates", bates],
       ["Review ID", record.review_id],
       ["File Type", record.file_type],
       ["MFR IDs", record.display?.mfr_request_ids || ""],
-      ["Match", record.display?.match_reason || ""]
+      ["Match", record.display?.match_reason || ""],
+      ["AI description", aiDescription]
     ];
     fields.forEach(([key, value]) => {
+      if (!String(value || "").trim()) return;
       const dt = document.createElement("dt");
       const dd = document.createElement("dd");
       dt.textContent = key;
       dd.textContent = escapeText(value);
       els.meta.append(dt, dd);
     });
-    const saved = progressFor(record.review_id);
     els.decision.value = saved.decision || "";
-    els.notes.value = saved.notes || "";
+    els.notes.value = split.marioNote || "";
     els.evidenceStatus.textContent = "Evidence is not loaded until requested.";
     els.preview.innerHTML = "";
     refreshListState(previousReviewId);
