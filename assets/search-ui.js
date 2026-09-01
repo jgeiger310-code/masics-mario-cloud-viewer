@@ -2,8 +2,8 @@
   "use strict";
   const A = window.MASICSSearchApp;
   const { E, S, core, store, PAGE, unique, download, tempLink } = A;
-  const decisions = ["pending", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "duplicate", "delete"];
-  const labels = { pending: "Pending", responsive: "Responsive", nonresponsive: "Non-responsive", missing: "Missing", privileged: "Privileged", needs_review: "Needs review", duplicate: "Duplicate", delete: "Excluded" };
+  const decisions = ["pending", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "last_stuff_to_add", "duplicate", "delete"];
+  const labels = { pending: "Pending", responsive: "Responsive", nonresponsive: "Non-responsive", missing: "Missing", privileged: "Privileged", needs_review: "Needs review", last_stuff_to_add: "Last Stuff To Add", duplicate: "Duplicate", delete: "Excluded" };
   const savedKey = `masics_saved_searches:${A.cfg.queueIdentity || "default"}`;
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
   function filters() {

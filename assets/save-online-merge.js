@@ -200,7 +200,7 @@
 
   function allowedDecision(value) {
     const decision = String(value || "");
-    return new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "duplicate", "delete"]).has(decision) ? decision : "";
+    return new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "last_stuff_to_add", "duplicate", "delete"]).has(decision) ? decision : "";
   }
 
   function currentRecord(records) {

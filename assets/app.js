@@ -292,7 +292,7 @@
 
   function normalizeDecision(value) {
     const decision = String(value?.decision || "");
-    const allowedDecisions = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "duplicate", "delete"]);
+    const allowedDecisions = new Set(["", "responsive", "nonresponsive", "missing", "privileged", "needs_review", "last_stuff_to_add", "duplicate", "delete"]);
     return {
       decision: allowedDecisions.has(decision) ? decision : "",
       notes: String(value?.notes || ""),
@@ -799,6 +799,7 @@
       if (filterValue === "pending" && reviewed) return false;
       if (filterValue === "needs_dropdown" && !notesOnly) return false;
       if (filterValue === "reviewed" && !reviewed) return false;
+      if (filterValue === "last_stuff_to_add" && saved.decision !== "last_stuff_to_add") return false;
       if (filterValue === "duplicate" && saved.decision !== "duplicate") return false;
       if (filterValue === "missing" && saved.decision !== "missing") return false;
       if (filterValue === "needs_review" && saved.decision !== "needs_review") return false;

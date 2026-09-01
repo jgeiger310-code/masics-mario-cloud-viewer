@@ -34,13 +34,13 @@ assert.match(index, /assets\/image-thumbnail-preview\.js\?v=20260720-thumbnail-m
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("assets/app.js"), "Image thumbnails must register before the app selects records");
 assert.ok(index.indexOf("image-thumbnail-preview.js") < index.indexOf("safe-preview.js"), "Image thumbnails must load before full-resolution preview listeners");
 assert.doesNotMatch(index, /stream-preview-accelerator\.js/, "Dropbox temporary-link preview must remain disabled because it can force downloads");
-assert.match(index, /assets\/app\.js\?v=20260821-ai-notes-not-notes-1/, "App AI-notes-are-not-notes cache bust is missing");
+assert.match(index, /assets\/app\.js\?v=20260901-last-stuff-to-add-1/, "App last-stuff cache bust is missing");
 assert.match(index, /'wasm-unsafe-eval'/, "AMR WebAssembly decoder CSP permission is missing");
 assert.match(index, /assets\/amr-preview\.js\?v=20260728-amr-wasm-csp-3/, "AMR playback handler cache bust is missing");
 assert.ok(index.indexOf("amr-preview.js") < index.indexOf("safe-preview.js"), "AMR handler must run before generic safe preview");
 assert.match(index, /assets\/safe-preview\.js\?v=20260720-supported-auto-preview-2/, "Safe preview cache bust is missing");
 assert.match(index, /assets\/export-missing-xlsx\.js\?v=20260821-legal-missing-export-1/, "Legal Missing XLSX export cache bust is missing");
-assert.match(index, /assets\/save-online-merge\.js\?v=20260821-ai-notes-not-notes-1/, "Verified online save guard is missing");
+assert.match(index, /assets\/save-online-merge\.js\?v=20260901-last-stuff-to-add-1/, "Verified online save guard is missing");
 assert.match(index, /assets\/notes-count-as-reviewed\.js\?v=20260821-ai-note-not-dropdown-1/, "AI-note must not auto-fill the review dropdown");
 assert.match(index, /assets\/ai-note-local-hydrator\.js\?v=20260821-ai-notes-not-notes-1/, "AI-note local hydrator is missing");
 assert.ok(index.indexOf("save-online-merge.js") < index.indexOf("ai-note-local-hydrator.js"), "AI-note hydrator must run after save merge wiring");
@@ -98,6 +98,8 @@ assert.match(app, /MASICS_QUEUE_RECORDS = records/, "App must expose loaded reco
 assert.match(app, /MASICS_ACTIVE_RECORD = record/, "App must expose the active record to the thumbnail helper");
 assert.match(app, /masics:record-change", \{ detail: \{ record \} \}/, "Record-change events must pass the active record to avoid redundant manifest reads");
 assert.match(app, /notesWithPreservedAINote/, "Initial sync must not let stale local notes erase online AI notes");
+assert.match(index, /option value="last_stuff_to_add">Last Stuff To Add/, "Last Stuff To Add dropdown option is missing");
+assert.match(app, /last_stuff_to_add/, "Last Stuff To Add decision must be allowed and filterable");
 
 assert.match(config, /manifestDropboxPath:\s*"\/MARIO - OPEN THIS - MASICS REVIEW TOOL\/MASICS Review System Files\/MASICS_MARIO_CLOUD_VIEWER\/MASICS_MARIO_QUEUE_MANIFEST_V1\.json"/, "Root-relative current V1 manifest path must be the primary queue locator");
 assert.match(config, /manifestDropboxPathAlternates:\s*\[\s*"\/jake Geiger\/MARIO - OPEN THIS - MASICS REVIEW TOOL\/MASICS Review System Files\/MASICS_MARIO_CLOUD_VIEWER\/MASICS_MARIO_QUEUE_MANIFEST_V1\.json"\s*\]/, "Full mounted path should remain the only manifest fallback");
@@ -140,6 +142,7 @@ assert.match(saveMerge, /saved decision map does not cover the full protected qu
 assert.match(saveMerge, /pending records are preserved as blank decision entries/, "Save policy must preserve pending records in progress JSON");
 assert.match(saveMerge, /generated status rows do not cover the full protected queue/, "Save must abort if generated status rows do not cover every protected record");
 assert.match(saveMerge, /Total records: \$\{records\.length\}/, "Save confirmation must show protected total count");
+assert.match(saveMerge, /last_stuff_to_add/, "Save Online must preserve Last Stuff To Add decisions");
 
 const notesCountAsReviewed = read("assets/notes-count-as-reviewed.js");
 assert.match(notesCountAsReviewed, /20260821-ai-note-not-dropdown-1/, "Notes-count-as-reviewed must ignore AI-only notes");
@@ -165,6 +168,7 @@ assert.match(amrPreview, /usesActiveRecordWithoutManifestRedownload/, "AMR activ
 assert.match(amrPreview, /Save original AMR/, "AMR preview must leave the original evidence available");
 assert.doesNotMatch(searchUi, /\["mp3", "wav", "m4a", "aac", "ogg", "amr"\]\.includes\(ext\)/, "Search Files must not route AMR into native browser audio");
 assert.match(searchUi, /AMR playback is handled by the Review Viewer decoder/, "Search Files must route AMR users to the Review Viewer decoder");
+assert.match(searchUi, /last_stuff_to_add/, "Search filters must include Last Stuff To Add decisions");
 
 assert.match(missingExport, /String\(decision \|\| ""\)\.trim\(\)\.toLowerCase\(\) === "missing"/, "Missing export must remain decision-specific");
 assert.match(missingExport, /window\.XLSX\.writeFile/, "Missing XLSX writer is missing");
