@@ -234,6 +234,10 @@
     const activeTitle = ($("record-title")?.textContent || "").trim().toLowerCase();
     const active = window.MASICS_ACTIVE_RECORD;
     if (!isAmrRecord(active) && !/\.(amr|awb)$/.test(activeTitle)) return;
+    const bates = String(active?.display?.viewer_bates || "").split(/[;·]/)[0].trim();
+    if (bates && window.MASICS_PREVIEW_MAP && window.MASICS_PREVIEW_MAP.records && window.MASICS_PREVIEW_MAP.records[bates]) {
+      return; // display copy exists — let the main previewer play WAV/PDF
+    }
     event.preventDefault();
     event.stopImmediatePropagation();
     try {
