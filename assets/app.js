@@ -970,7 +970,11 @@
       els.meta.append(dt, dd);
     });
     els.decision.value = saved.decision || "";
-    els.notes.value = split.marioNote || "";
+    const aiForBox = split.aiDescription || String(record.display && record.display.ai_note || record.ai_note || "").trim();
+    const marioForBox = split.marioNote || "";
+    els.notes.value = marioForBox && aiForBox
+      ? marioForBox + "\n\nAI note: " + aiForBox
+      : marioForBox || (aiForBox ? "AI note: " + aiForBox : "");
     els.evidenceStatus.textContent = "Evidence is not loaded until requested.";
     els.preview.innerHTML = "";
     refreshListState(previousReviewId);

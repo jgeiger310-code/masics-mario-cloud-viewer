@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260821-ai-notes-not-notes-1";
+  const VERSION = "20260902-ai-notes-in-notes-box-1";
   const DROPBOX_CONTENT = "https://content.dropboxapi.com/2/";
   const AI_MARKER = "AI note:";
   const RETRY_DELAYS_MS = [250, 1500, 4000];
@@ -138,12 +138,15 @@
     const saved = decisions[reviewId] || {};
     const notes = document.getElementById("notes");
     const decision = document.getElementById("decision");
-    if (notes && document.activeElement !== notes && hasAINote(saved)) {
-      const raw = String(saved.notes || "");
-      const marker = raw.search(/\bAI note:/i);
-      const marioNotes = (marker >= 0 ? raw.slice(0, marker) : raw).trim();
-      if (String(notes.value || "").includes(AI_MARKER) || !String(notes.value || "").trim()) {
-        notes.value = marioNotes;
+    if (notes && document.activeElement !== notes) {
+      let raw = String(saved.notes || "");
+      const record = window.MASICS_ACTIVE_RECORD || {};
+      const fromQueue = String((record.display && record.display.ai_note) || record.ai_note || "").trim();
+      if (fromQueue && !raw.includes(AI_MARKER)) {
+        raw = raw.trim() ? (raw.trim() + "\n\nAI note: " + fromQueue) : ("AI note: " + fromQueue);
+      }
+      if (raw && String(notes.value || "") !== raw) {
+        notes.value = raw;
       }
     }
     if (decision && document.activeElement !== decision && !String(decision.value || "") && String(saved.decision || "")) {
