@@ -59,6 +59,31 @@
     return window.sessionStorage.getItem("masics_access_token") || "";
   }
 
+  let previewMapCache = null;
+  function viewerBatesOf(record) {
+    return String(record?.display?.viewer_bates || "").split(/[;·]/)[0].trim();
+  }
+  function previewFolder() {
+    const cfg = window.MASICS_DROPBOX_CONFIG || {};
+    return String(cfg.progressDropboxFolder || "").replace(/\/+$/g, "") + "/PREVIEW_DERIVATIVES";
+  }
+  async function loadPreviewMap() {
+    if (previewMapCache) return previewMapCache;
+    try {
+      const response = await dropboxDownload(previewFolder() + "/preview_map.json");
+      previewMapCache = await response.json();
+    } catch {
+      previewMapCache = { records: {} };
+    }
+    window.MASICS_PREVIEW_MAP = previewMapCache;
+    return previewMapCache;
+  }
+  function mappedPreview(record) {
+    const map = (previewMapCache && previewMapCache.records) || {};
+    return map[viewerBatesOf(record)] || null;
+  }
+
+
   function unique(values) {
     const seen = new Set();
     return values.flat().map((value) => String(value || "").trim()).filter((value) => {
@@ -611,6 +636,24 @@
       const record = activeRecordFrom(allRecords);
       if (!record) throw new Error("No active record is selected.");
 
+      await loadPreviewMap();
+      const mapped = mappedPreview(record);
+      if (mapped && mapped.preview) {
+        status.textContent = "Loading browser-display copy (original file unchanged)...";
+        const locators = [previewFolder() + "/" + mapped.preview];
+        cancelActivePreview();
+        activePreviewAbortController = new AbortController();
+        const response = await downloadFirst(locators);
+        if (key && selectedKey() !== key) return;
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        activePreviewUrl = url;
+        const fake = { ...record, filename: mapped.preview, extension: mapped.kind === "audio" ? ".wav" : ".pdf", file_type: mapped.kind === "audio" ? "wav" : "pdf" };
+        const result = await renderPreview(blob, url, fake, key);
+        appendFileActions($("preview"), url, record, "Open original evidence");
+        status.textContent = (result && result.statusMessage ? result.statusMessage + " " : "") + "Showing a display copy. Original evidence was not modified.";
+        return;
+      }
       if (!options.force && !isAutoPreviewRecord(record)) {
         showManualPreviewMessage(record);
         return;
