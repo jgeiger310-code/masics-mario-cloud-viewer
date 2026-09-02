@@ -458,16 +458,33 @@
       if (expectedKey && selectedKey() !== expectedKey) return { statusMessage: "Preview changed before PDF finished rendering." };
 
       let renderedPages = 0;
+      let firstPageLooksLikeBatesStamp = false;
       async function renderThrough(limit) {
         for (let pageNumber = renderedPages + 1; pageNumber <= Math.min(limit, pdf.numPages); pageNumber += 1) {
           if (expectedKey && selectedKey() !== expectedKey) break;
           const page = await pdf.getPage(pageNumber);
+          if (pageNumber === 1) {
+            try {
+              const textContent = await page.getTextContent();
+              const text = (textContent.items || []).map((item) => String(item.str || "")).join(" ").replace(/\s+/g, " ").trim();
+              firstPageLooksLikeBatesStamp = /masic franklinville\s*\d{3,}/i.test(text) || (text.length > 0 && text.length < 80);
+            } catch {
+              firstPageLooksLikeBatesStamp = false;
+            }
+          }
           await renderPdfPage(page, pages, pageNumber);
           renderedPages = pageNumber;
         }
       }
-      note.textContent = `${record.filename} rendered in-page (${pdf.numPages} page${pdf.numPages === 1 ? "" : "s"}). Showing the first ${Math.min(maxInitialPdfPages, pdf.numPages)} page${Math.min(maxInitialPdfPages, pdf.numPages) === 1 ? "" : "s"} to protect browser memory.`;
-      await renderThrough(maxInitialPdfPages);
+      const initialLimit = pdf.numPages <= 20 ? pdf.numPages : Math.max(maxInitialPdfPages, firstPageLooksLikeBatesStamp ? 8 : maxInitialPdfPages);
+      note.textContent = firstPageLooksLikeBatesStamp
+        ? `${record.filename} — ${pdf.numPages} pages. Page 1 is a production Bates stamp (almost blank). Scroll for the real document, or Open PDF.`
+        : `${record.filename} rendered in-page (${pdf.numPages} page${pdf.numPages === 1 ? "" : "s"}).`;
+      await renderThrough(pdf.numPages <= 20 ? pdf.numPages : maxInitialPdfPages);
+      if (firstPageLooksLikeBatesStamp && renderedPages < pdf.numPages) {
+        await renderThrough(pdf.numPages);
+      }
+      appendFileActions(shell, url, record, "Open PDF");
       if (renderedPages < pdf.numPages) {
         const more = document.createElement("button");
         more.type = "button";
