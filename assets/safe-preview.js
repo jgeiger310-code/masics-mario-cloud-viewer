@@ -236,7 +236,7 @@
     preview.appendChild(message);
   }
 
-  function showManualPreviewMessage() {
+  function showManualPreviewMessage(record) {
     const status = $("evidence-status");
     const preview = $("preview");
     const title = ($("record-title")?.textContent || "").trim();
@@ -244,11 +244,18 @@
     cancelActivePreview();
     releasePreviewUrl();
     preview.innerHTML = "";
+    const ext = record ? fileExtension(record) : "";
     const message = document.createElement("p");
     message.className = "preview-message";
-    message.textContent = title
-      ? `${title} is not loaded automatically. Press Preview Evidence to load only this file from Dropbox.`
-      : "Evidence is not loaded automatically. Press Preview Evidence to load only the active file from Dropbox.";
+    if ([".doc", ".xls", ".xlsx", ".pptx", ".ppt", ".odt", ".ods", ".odp", ".rtf"].includes(ext)) {
+      message.textContent = `${record.filename} is a ${ext} file. This browser cannot show it in the page. Press Preview Evidence for a download link, then open it in Word or PowerPoint. The original file is not changed.`;
+    } else if ([".amr", ".awb"].includes(ext)) {
+      message.textContent = `${record.filename} is a phone recording. Press Preview Evidence to play it here. If it still cannot play, use Open original. The original .amr is not changed.`;
+    } else {
+      message.textContent = title
+        ? `${title} is not loaded automatically. Press Preview Evidence to load only this file from Dropbox.`
+        : "Evidence is not loaded automatically. Press Preview Evidence to load only the active file from Dropbox.";
+    }
     preview.appendChild(message);
     status.textContent = "Preview waits for Preview Evidence. No file was downloaded.";
   }
@@ -530,10 +537,32 @@
       appendFileActions(preview, url, record, "Open text file");
       return { statusMessage: "Text preview loaded in-page. No file was downloaded." };
     }
+    if (urlExts.includes(ext)) {
+      const text = await blob.text();
+      const match = text.match(/^\s*URL\s*=\s*(.+)\s*$/im);
+      const href = match ? match[1].trim() : "";
+      const message = document.createElement("p");
+      message.className = "preview-message";
+      message.textContent = href
+        ? "This is a web shortcut (.url), not a document. Open the linked page:"
+        : "This is a web shortcut (.url). The destination could not be read. Use Open original.";
+      preview.appendChild(message);
+      if (href) {
+        const link = document.createElement("a");
+        link.className = "preview-open";
+        link.href = href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = href;
+        preview.appendChild(link);
+      }
+      appendFileActions(preview, url, record);
+      return { statusMessage: "Web shortcut loaded. Original .url file was not modified." };
+    }
     const message = document.createElement("p");
     message.className = "preview-message";
     message.textContent = officeExts.includes(ext)
-      ? "This browser cannot display this Office format in-page. Open the original file in its installed app."
+      ? "This browser cannot display this Office format in-page. Open the original file in Word or PowerPoint."
       : "This format cannot be displayed in-page. The original file is still available.";
     preview.appendChild(message);
     appendFileActions(preview, url, record);
@@ -566,7 +595,7 @@
       if (!record) throw new Error("No active record is selected.");
 
       if (!options.force && !isAutoPreviewRecord(record)) {
-        showManualPreviewMessage();
+        showManualPreviewMessage(record);
         return;
       }
 

@@ -8,7 +8,7 @@
   let activeOriginalUrl = "";
   let activePlayableUrl = "";
 
-  window.MASICS_AMR_PREVIEW_VERSION = "20260728-amr-nb-wb-wav-2";
+  window.MASICS_AMR_PREVIEW_VERSION = "20260902-amr-fallback-open-original-1";
 
   function $(id) {
     return document.getElementById(id);
@@ -244,7 +244,15 @@
     } catch (err) {
       const status = $("evidence-status");
       const preview = $("preview");
-      if (preview) preview.innerHTML = "";
+      const record = window.MASICS_ACTIVE_RECORD;
+      if (preview) {
+        preview.innerHTML = "";
+        const message = document.createElement("p");
+        message.className = "preview-message";
+        message.textContent = "This phone recording (.amr) could not play in the browser. The original file is still in Dropbox and was not modified. Use Open original to download it.";
+        preview.appendChild(message);
+        if (activeOriginalUrl && record) appendFileActions(preview, activeOriginalUrl, record);
+      }
       if (status) status.textContent = `AMR playback error: ${err?.message || "Unable to decode this AMR file."}`;
       console.error("MASICS AMR preview failed", err);
     }
